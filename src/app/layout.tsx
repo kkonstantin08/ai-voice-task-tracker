@@ -18,9 +18,24 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getCurrentLocale();
+  const themeInitScript = `(() => {
+    try {
+      const storedTheme = localStorage.getItem("theme");
+      const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const isDark = storedTheme === "dark" || (storedTheme !== "light" && systemPrefersDark);
+      document.documentElement.classList.toggle("dark", isDark);
+    } catch {}
+  })();`;
 
   return (
-    <html lang={locale} className={cn("h-full antialiased", "font-sans", geist.variable)}>
+    <html
+      lang={locale}
+      suppressHydrationWarning
+      className={cn("h-full antialiased", "font-sans", geist.variable)}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

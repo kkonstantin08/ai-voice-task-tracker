@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LanguageToggle } from "@/components/language-toggle";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { LogoutButton } from "@/components/logout-button";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -45,7 +46,10 @@ export function ProtectedNav({ email, locale }: ProtectedNavProps) {
               <Link href="/app" className="truncate text-base font-semibold text-foreground sm:text-lg">
                 AI Voice Task Tracker
               </Link>
-              <LanguageToggle locale={locale} size="compact" className="shrink-0" />
+              <div className="flex shrink-0 items-center gap-2">
+                <LanguageToggle locale={locale} size="compact" className="shrink-0" />
+                <ThemeToggle size="compact" />
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 md:flex-nowrap md:justify-end md:gap-3">
