@@ -37,11 +37,11 @@ export default async function Home() {
   const t = labels[locale];
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-slate-100 via-white to-blue-50">
-      <div className="absolute right-6 top-6">
-        <LanguageToggle locale={locale} />
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-100 via-white to-blue-50">
+      <div className="mx-auto flex w-full max-w-5xl justify-end px-4 pt-4 sm:px-6 sm:pt-6">
+        <LanguageToggle locale={locale} size="compact" />
       </div>
-      <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-6 py-16">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-4 py-10 sm:px-6 sm:py-16">
         <div className="max-w-3xl">
           <span className="inline-flex rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wider text-slate-600">
             {t.badge}

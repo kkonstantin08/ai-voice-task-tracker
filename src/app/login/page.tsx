@@ -12,11 +12,13 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-slate-100 px-4 py-12">
-      <div className="absolute right-6 top-6">
-        <LanguageToggle locale={locale} />
+    <div className="flex min-h-screen flex-col bg-slate-100">
+      <div className="mx-auto flex w-full max-w-5xl justify-end px-4 pt-4 sm:px-6 sm:pt-6">
+        <LanguageToggle locale={locale} size="compact" />
       </div>
-      <AuthForm mode="login" locale={locale} />
+      <div className="mx-auto flex w-full max-w-5xl flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
+        <AuthForm mode="login" locale={locale} />
+      </div>
     </div>
   );
 }
