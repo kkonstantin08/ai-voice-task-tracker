@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import type { Locale } from "@/lib/i18n";
 
 type AuthFormMode = "register" | "login";
@@ -97,69 +103,60 @@ export function AuthForm({ mode, locale }: AuthFormProps) {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
-    >
-      <h1 className="text-2xl font-semibold text-slate-900">
-        {isRegister ? t.createAccount : t.welcomeBack}
-      </h1>
-      <p className="mt-2 text-sm text-slate-600">
-        {isRegister ? t.registerIntro : t.loginIntro}
-      </p>
+    <Card className="w-full max-w-md shadow-xl">
+      <CardHeader>
+        <CardTitle>{isRegister ? t.createAccount : t.welcomeBack}</CardTitle>
+        <CardDescription>{isRegister ? t.registerIntro : t.loginIntro}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">{t.email}</Label>
+            <Input
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder={t.emailPlaceholder}
+            />
+          </div>
 
-      <div className="mt-6 space-y-4">
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">{t.email}</span>
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 outline-none ring-0 placeholder:text-slate-400 focus:border-slate-500"
-            placeholder={t.emailPlaceholder}
-          />
-        </label>
+          <div className="space-y-2">
+            <Label htmlFor="password">{t.password}</Label>
+            <Input
+              id="password"
+              type="password"
+              required
+              minLength={8}
+              autoComplete={isRegister ? "new-password" : "current-password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={t.passwordPlaceholder}
+            />
+          </div>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">{t.password}</span>
-          <input
-            type="password"
-            required
-            minLength={8}
-            autoComplete={isRegister ? "new-password" : "current-password"}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 outline-none ring-0 placeholder:text-slate-400 focus:border-slate-500"
-            placeholder={t.passwordPlaceholder}
-          />
-        </label>
-      </div>
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
 
-      {error ? (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
+          <Button type="submit" disabled={submitting} className="w-full">
+            {submitting ? t.pleaseWait : isRegister ? t.register : t.login}
+          </Button>
+        </form>
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="mt-6 w-full rounded-md bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submitting ? t.pleaseWait : isRegister ? t.register : t.login}
-      </button>
+        <Separator className="my-5" />
 
-      <p className="mt-4 text-sm text-slate-600">
-        {isRegister ? t.alreadyHaveAccount : t.needAccount}{" "}
-        <Link
-          href={isRegister ? "/login" : "/register"}
-          className="font-medium text-slate-900 underline underline-offset-2"
-        >
-          {isRegister ? t.login : t.register}
-        </Link>
-      </p>
-    </form>
+        <p className="text-sm text-muted-foreground">
+          {isRegister ? t.alreadyHaveAccount : t.needAccount}{" "}
+          <Link href={isRegister ? "/login" : "/register"} className="font-medium text-foreground">
+            {isRegister ? t.login : t.register}
+          </Link>
+        </p>
+      </CardContent>
+    </Card>
   );
 }
