@@ -73,7 +73,9 @@ const labels = {
     statusInProgress: "In progress",
     statusDone: "Done",
     markDone: "Mark done",
+    undoDone: "Undo completion",
     completing: "Completing...",
+    undoing: "Undoing...",
     completed: "Completed",
   },
   ru: {
@@ -104,7 +106,9 @@ const labels = {
     statusInProgress: "В процессе",
     statusDone: "Выполнено",
     markDone: "Выполнить",
+    undoDone: "Отменить выполнение",
     completing: "Выполняем...",
+    undoing: "Отменяем...",
     completed: "Выполнено",
   },
 } as const;
@@ -290,7 +294,7 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
     }
   }
 
-  async function completeTask(taskId: string) {
+  async function updateTaskStatus(taskId: string, action: "complete" | "uncomplete") {
     if (updatingTaskId) {
       return;
     }
@@ -298,14 +302,17 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
     setUpdatingTaskId(taskId);
     setTasksError(null);
     try {
-      const response = await fetch("/api/tasks/voice/complete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        action === "complete" ? "/api/tasks/voice/complete" : "/api/tasks/voice/uncomplete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ taskId }),
         },
-        credentials: "include",
-        body: JSON.stringify({ taskId }),
-      });
+      );
       const data = (await response.json()) as CompleteTaskResponse;
       if (!response.ok || !data.task) {
         setTasksError(data.error ?? t.completeTaskFailed);
@@ -431,11 +438,19 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
 
                   <button
                     type="button"
-                    onClick={() => void completeTask(item.id)}
-                    disabled={isDone || isUpdating || Boolean(updatingTaskId)}
+                    onClick={() =>
+                      void updateTaskStatus(item.id, isDone ? "uncomplete" : "complete")
+                    }
+                    disabled={isUpdating || Boolean(updatingTaskId)}
                     className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isDone ? t.completed : isUpdating ? t.completing : t.markDone}
+                    {isUpdating
+                      ? isDone
+                        ? t.undoing
+                        : t.completing
+                      : isDone
+                        ? t.undoDone
+                        : t.markDone}
                   </button>
                 </li>
               );

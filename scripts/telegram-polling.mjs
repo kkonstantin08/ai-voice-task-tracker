@@ -23,47 +23,53 @@ const telegramApiBase = `https://api.telegram.org/bot${botToken}`;
 const text = {
   en: {
     start:
-      "Hello! To connect your account, send: /link 123456\nTo switch language: /lang ru or /lang en\nTo view tasks: /tasks\nTo complete task: /done <task_id>",
+      "Hello! To connect your account, send: /link 123456\nTo switch language: /lang ru or /lang en\nTo view tasks: /tasks\nTo complete task: /done <task_id>\nTo undo completion: /undo <task_id>",
     unknown:
-      "Unknown command. Use /link 123456, /lang ru|en, /tasks, /done <task_id>.",
+      "Unknown command. Use /link 123456, /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
     invalidOrExpired: "Link code is invalid or expired. Generate a new code in app settings.",
     linked:
-      "Telegram linked successfully. You will receive task notifications.\nCommands: /lang ru|en, /tasks, /done <task_id>",
+      "Telegram linked successfully. You will receive task notifications.\nCommands: /lang ru|en, /tasks, /done <task_id>, /undo <task_id>",
     linkFirst:
-      "Link your account first with /link 123456, then use /lang ru|en, /tasks, /done <task_id>.",
+      "Link your account first with /link 123456, then use /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
     languageStatus: "Current bot language: EN\nUse /lang ru or /lang en",
     languageChangedToEn: "Bot language changed to EN.",
     languageChangedToRu: "Язык бота изменен на RU.",
-    tasksHeader: "Open voice tasks:",
-    tasksEmpty: "No open voice-created tasks.",
+    tasksHeader: "Recent voice tasks:",
+    tasksEmpty: "No voice-created tasks yet.",
     doneUsage: "Usage: /done <task_id>. Use /tasks to get IDs.",
     doneNotFound: "Task not found for this account.",
     doneAmbiguous: "Found several tasks by this prefix. Use full task ID from /tasks.",
     doneAlready: "Task is already completed.",
     doneSuccess: "Task marked as completed.",
+    undoUsage: "Usage: /undo <task_id>. Use /tasks to get IDs.",
+    undoNotDone: "Task is not completed yet.",
+    undoSuccess: "Task moved back to To do.",
   },
   ru: {
     start:
-      "Привет! Чтобы подключить аккаунт, отправьте: /link 123456\nЧтобы сменить язык: /lang ru или /lang en\nСписок задач: /tasks\nВыполнить задачу: /done <task_id>",
+      "Привет! Чтобы подключить аккаунт, отправьте: /link 123456\nЧтобы сменить язык: /lang ru или /lang en\nСписок задач: /tasks\nВыполнить задачу: /done <task_id>\nОтменить выполнение: /undo <task_id>",
     unknown:
-      "Неизвестная команда. Используйте /link 123456, /lang ru|en, /tasks, /done <task_id>.",
+      "Неизвестная команда. Используйте /link 123456, /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
     invalidOrExpired:
       "Код привязки неверный или истек. Сгенерируйте новый код в настройках приложения.",
     linked:
-      "Telegram успешно подключен. Вы будете получать уведомления о задачах.\nКоманды: /lang ru|en, /tasks, /done <task_id>",
+      "Telegram успешно подключен. Вы будете получать уведомления о задачах.\nКоманды: /lang ru|en, /tasks, /done <task_id>, /undo <task_id>",
     linkFirst:
-      "Сначала привяжите аккаунт через /link 123456, затем используйте /lang ru|en, /tasks, /done <task_id>.",
+      "Сначала привяжите аккаунт через /link 123456, затем используйте /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
     languageStatus: "Текущий язык бота: RU\nИспользуйте /lang ru или /lang en",
     languageChangedToEn: "Bot language changed to EN.",
     languageChangedToRu: "Язык бота изменен на RU.",
-    tasksHeader: "Открытые голосовые задачи:",
-    tasksEmpty: "Нет открытых задач, созданных голосом.",
+    tasksHeader: "Последние голосовые задачи:",
+    tasksEmpty: "Пока нет голосовых задач.",
     doneUsage: "Использование: /done <task_id>. Смотрите ID через /tasks.",
     doneNotFound: "Задача для этого аккаунта не найдена.",
     doneAmbiguous:
       "По этому префиксу найдено несколько задач. Используйте полный task_id из /tasks.",
     doneAlready: "Задача уже выполнена.",
     doneSuccess: "Задача отмечена как выполненная.",
+    undoUsage: "Использование: /undo <task_id>. Смотрите ID через /tasks.",
+    undoNotDone: "Задача и так не выполнена.",
+    undoSuccess: "Задача возвращена в статус к выполнению.",
   },
 };
 
@@ -127,12 +133,11 @@ async function sendTelegramMessage(chatId, messageText) {
   });
 }
 
-async function getOpenVoiceTasks(userId) {
+async function getRecentVoiceTasks(userId) {
   return prisma.task.findMany({
     where: {
       userId,
       voiceInputId: { not: null },
-      status: { in: ["todo", "in_progress"] },
     },
     orderBy: { createdAt: "desc" },
     take: 15,
@@ -146,7 +151,7 @@ async function getOpenVoiceTasks(userId) {
 
 async function handleTasksCommand(chatId, userId, language) {
   const t = text[language];
-  const tasks = await getOpenVoiceTasks(userId);
+  const tasks = await getRecentVoiceTasks(userId);
   if (tasks.length === 0) {
     await sendTelegramMessage(chatId, t.tasksEmpty);
     return;
@@ -155,7 +160,7 @@ async function handleTasksCommand(chatId, userId, language) {
   const lines = tasks.map((task) => {
     const safeTitle = task.title.slice(0, 80);
     const status = formatTaskStatus(task.status, language);
-    return `• ${task.id} — ${safeTitle} (${status})`;
+    return `- ${task.id} — ${safeTitle} (${status})`;
   });
 
   await sendTelegramMessage(chatId, `${t.tasksHeader}\n${lines.join("\n")}`);
@@ -170,19 +175,7 @@ async function handleDoneCommand(chatId, userId, commandText, language) {
   }
 
   const taskRef = match[1];
-  const matches = await prisma.task.findMany({
-    where: {
-      userId,
-      voiceInputId: { not: null },
-      OR: [{ id: taskRef }, { id: { startsWith: taskRef } }],
-    },
-    orderBy: { createdAt: "desc" },
-    take: 3,
-    select: {
-      id: true,
-      status: true,
-    },
-  });
+  const matches = await findTaskByRef(userId, taskRef);
 
   if (matches.length === 0) {
     await sendTelegramMessage(chatId, t.doneNotFound);
@@ -214,6 +207,65 @@ async function handleDoneCommand(chatId, userId, commandText, language) {
   });
 
   await sendTelegramMessage(chatId, `${t.doneSuccess}\n${task.id}`);
+}
+
+async function findTaskByRef(userId, taskRef) {
+  return prisma.task.findMany({
+    where: {
+      userId,
+      voiceInputId: { not: null },
+      OR: [{ id: taskRef }, { id: { startsWith: taskRef } }],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 3,
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+}
+
+async function handleUndoCommand(chatId, userId, commandText, language) {
+  const t = text[language];
+  const match = commandText.match(/^\/undo(?:@\w+)?\s+([a-zA-Z0-9_-]{4,})$/);
+  if (!match) {
+    await sendTelegramMessage(chatId, t.undoUsage);
+    return;
+  }
+
+  const taskRef = match[1];
+  const matches = await findTaskByRef(userId, taskRef);
+
+  if (matches.length === 0) {
+    await sendTelegramMessage(chatId, t.doneNotFound);
+    return;
+  }
+
+  if (matches.length > 1) {
+    await sendTelegramMessage(chatId, t.doneAmbiguous);
+    return;
+  }
+
+  const task = matches[0];
+  if (task.status !== "done") {
+    await sendTelegramMessage(chatId, `${t.undoNotDone}\n${task.id}`);
+    return;
+  }
+
+  await prisma.task.update({
+    where: { id: task.id },
+    data: { status: "todo" },
+  });
+
+  await prisma.analyticsEvent.create({
+    data: {
+      userId,
+      eventName: "task_uncompleted_from_telegram",
+      metadata: { taskId: task.id },
+    },
+  });
+
+  await sendTelegramMessage(chatId, `${t.undoSuccess}\n${task.id}`);
 }
 
 async function processTelegramUpdate(update) {
@@ -295,6 +347,15 @@ async function processTelegramUpdate(update) {
       return;
     }
     await handleDoneCommand(chatId, existingConnection.userId, commandText, currentLanguage);
+    return;
+  }
+
+  if (commandText.match(/^\/undo(?:@\w+)?/i)) {
+    if (!existingConnection) {
+      await sendTelegramMessage(chatId, t.linkFirst);
+      return;
+    }
+    await handleUndoCommand(chatId, existingConnection.userId, commandText, currentLanguage);
     return;
   }
 
