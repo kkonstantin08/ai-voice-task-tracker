@@ -20,6 +20,43 @@ const dropPendingUpdates =
 
 const telegramApiBase = `https://api.telegram.org/bot${botToken}`;
 
+const text = {
+  en: {
+    start: "Hello! To connect your account, send: /link 123456\nTo switch language: /lang ru or /lang en",
+    unknown: "Unknown command. Use /link 123456 with your one-time code from Settings. Language: /lang ru or /lang en",
+    invalidOrExpired: "Link code is invalid or expired. Generate a new code in app settings.",
+    linked: "Telegram linked successfully. You will receive task notifications. Language command: /lang ru or /lang en",
+    linkFirst: "Link your account first with /link 123456, then choose language: /lang ru or /lang en",
+    languageStatus: "Current bot language: EN\nUse /lang ru or /lang en",
+    languageChangedToEn: "Bot language changed to EN.",
+  },
+  ru: {
+    start: "Привет! Чтобы подключить аккаунт, отправьте: /link 123456\nЧтобы сменить язык: /lang ru или /lang en",
+    unknown: "Неизвестная команда. Используйте /link 123456 с одноразовым кодом из Settings. Язык: /lang ru или /lang en",
+    invalidOrExpired: "Код привязки неверный или истек. Сгенерируйте новый код в настройках приложения.",
+    linked: "Telegram успешно подключен. Вы будете получать уведомления о задачах. Смена языка: /lang ru или /lang en",
+    linkFirst: "Сначала привяжите аккаунт через /link 123456, затем выберите язык: /lang ru или /lang en",
+    languageStatus: "Текущий язык бота: RU\nИспользуйте /lang ru или /lang en",
+    languageChangedToEn: "Язык бота изменен на EN.",
+  },
+};
+
+function normalizeLanguage(language) {
+  return language === "ru" ? "ru" : "en";
+}
+
+function parseLanguageCommand(input) {
+  const match = input.match(/^\/lang(?:@\w+)?(?:\s+(ru|en))?$/i);
+  if (!match) {
+    return null;
+  }
+  return normalizeLanguage(match[1]?.toLowerCase());
+}
+
+function isLanguageCommand(input) {
+  return /^\/lang(?:@\w+)?(?:\s+\w+)?$/i.test(input);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -46,34 +83,78 @@ async function telegramRequest(method, payload) {
   return data.result;
 }
 
-async function sendTelegramMessage(chatId, text) {
+async function sendTelegramMessage(chatId, messageText) {
   await telegramRequest("sendMessage", {
     chat_id: chatId,
-    text,
+    text: messageText,
   });
 }
 
 async function processTelegramUpdate(update) {
-  const text = update?.message?.text?.trim() ?? "";
+  const commandText = update?.message?.text?.trim() ?? "";
   const chatIdRaw = update?.message?.chat?.id;
   const username = update?.message?.from?.username ?? null;
   const chatId = chatIdRaw === undefined || chatIdRaw === null ? null : String(chatIdRaw);
 
-  if (!chatId || !text) {
+  if (!chatId || !commandText) {
     return;
   }
 
-  if (text.startsWith("/start")) {
-    await sendTelegramMessage(chatId, "Hello! To connect your account, send: /link 123456");
+  const existingConnection = await prisma.telegramConnection.findFirst({
+    where: { chatId },
+    select: { userId: true, uiLanguage: true },
+  });
+  const currentLanguage = normalizeLanguage(existingConnection?.uiLanguage);
+  const t = text[currentLanguage];
+
+  if (commandText.startsWith("/start")) {
+    await sendTelegramMessage(chatId, t.start);
     return;
   }
 
-  const linkMatch = text.match(/^\/link\s+(\d{6})$/);
+  if (isLanguageCommand(commandText)) {
+    if (!existingConnection) {
+      await sendTelegramMessage(chatId, t.linkFirst);
+      return;
+    }
+
+    const requestedLanguage = parseLanguageCommand(commandText);
+    const hasArgument = /^\/lang(?:@\w+)?\s+/i.test(commandText);
+    if (!hasArgument) {
+      await sendTelegramMessage(chatId, currentLanguage === "ru" ? text.ru.languageStatus : text.en.languageStatus);
+      return;
+    }
+
+    if (!requestedLanguage) {
+      await sendTelegramMessage(chatId, t.unknown);
+      return;
+    }
+
+    await prisma.telegramConnection.update({
+      where: { userId: existingConnection.userId },
+      data: { uiLanguage: requestedLanguage },
+    });
+
+    await prisma.analyticsEvent.create({
+      data: {
+        userId: existingConnection.userId,
+        eventName: "telegram_language_changed",
+        metadata: { language: requestedLanguage },
+      },
+    });
+
+    if (requestedLanguage === "ru") {
+      await sendTelegramMessage(chatId, text.ru.languageStatus);
+    } else {
+      await sendTelegramMessage(chatId, text.en.languageChangedToEn);
+    }
+
+    return;
+  }
+
+  const linkMatch = commandText.match(/^\/link\s+(\d{6})$/);
   if (!linkMatch) {
-    await sendTelegramMessage(
-      chatId,
-      "Unknown command. Use /link 123456 with your one-time code from Settings.",
-    );
+    await sendTelegramMessage(chatId, t.unknown);
     return;
   }
 
@@ -88,10 +169,7 @@ async function processTelegramUpdate(update) {
   });
 
   if (!codeRecord) {
-    await sendTelegramMessage(
-      chatId,
-      "Link code is invalid or expired. Generate a new code in app settings.",
-    );
+    await sendTelegramMessage(chatId, t.invalidOrExpired);
     return;
   }
 
@@ -106,6 +184,7 @@ async function processTelegramUpdate(update) {
         userId: codeRecord.userId,
         chatId,
         telegramUsername: username,
+        uiLanguage: "en",
       },
     });
 
@@ -132,10 +211,7 @@ async function processTelegramUpdate(update) {
     });
   });
 
-  await sendTelegramMessage(
-    chatId,
-    "Telegram linked successfully. You will receive task notifications.",
-  );
+  await sendTelegramMessage(chatId, text.en.linked);
 }
 
 async function ensureLongPollingMode() {

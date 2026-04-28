@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Locale } from "@/lib/i18n";
 
 type TelegramConnection = {
   chatId: string;
@@ -10,6 +11,7 @@ type TelegramConnection = {
 
 type TelegramLinkPanelProps = {
   initialConnection: TelegramConnection | null;
+  locale: Locale;
 };
 
 type GenerateCodeResponse = {
@@ -21,7 +23,47 @@ type GenerateCodeResponse = {
   connection?: TelegramConnection;
 };
 
-export function TelegramLinkPanel({ initialConnection }: TelegramLinkPanelProps) {
+const labels = {
+  en: {
+    generateCodeFailed: "Failed to generate code.",
+    networkError: "Network error while generating code.",
+    title: "Telegram Connection",
+    subtitle: "Connect your Telegram account to receive task notifications.",
+    connected: "Telegram is connected.",
+    username: "Username",
+    notSet: "not set",
+    chatId: "Chat ID",
+    step1: "1. Click Generate Linking Code.",
+    step2: "2. Open your Telegram bot and send: `/link 123456` (replace with your code).",
+    step3: "3. Once linked, new tasks from voice input will trigger Telegram notifications.",
+    generating: "Generating...",
+    generateCode: "Generate Linking Code",
+    oneTimeCode: "One-time linking code:",
+    expiresAt: "Expires at",
+    unknown: "Unknown",
+  },
+  ru: {
+    generateCodeFailed: "Не удалось сгенерировать код.",
+    networkError: "Сетевая ошибка при генерации кода.",
+    title: "Подключение Telegram",
+    subtitle: "Подключите Telegram-аккаунт, чтобы получать уведомления о задачах.",
+    connected: "Telegram подключен.",
+    username: "Имя пользователя",
+    notSet: "не указано",
+    chatId: "Chat ID",
+    step1: "1. Нажмите Сгенерировать код привязки.",
+    step2: "2. Откройте бота в Telegram и отправьте: `/link 123456` (замените на свой код).",
+    step3: "3. После привязки новые задачи из голосового ввода будут отправляться в Telegram.",
+    generating: "Генерация...",
+    generateCode: "Сгенерировать код привязки",
+    oneTimeCode: "Одноразовый код привязки:",
+    expiresAt: "Истекает",
+    unknown: "Неизвестно",
+  },
+} as const;
+
+export function TelegramLinkPanel({ initialConnection, locale }: TelegramLinkPanelProps) {
+  const t = labels[locale];
   const [connection, setConnection] = useState<TelegramConnection | null>(initialConnection);
   const [code, setCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
@@ -44,7 +86,7 @@ export function TelegramLinkPanel({ initialConnection }: TelegramLinkPanelProps)
       const data = (await response.json()) as GenerateCodeResponse;
 
       if (!response.ok) {
-        setError(data.error ?? "Failed to generate code.");
+        setError(data.error ?? t.generateCodeFailed);
         return;
       }
 
@@ -58,7 +100,7 @@ export function TelegramLinkPanel({ initialConnection }: TelegramLinkPanelProps)
       setCode(data.code ?? null);
       setExpiresAt(data.expiresAt ?? null);
     } catch {
-      setError("Network error while generating code.");
+      setError(t.networkError);
     } finally {
       setLoading(false);
     }
@@ -66,24 +108,22 @@ export function TelegramLinkPanel({ initialConnection }: TelegramLinkPanelProps)
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-xl font-semibold text-slate-900">Telegram Connection</h2>
-      <p className="mt-2 text-sm text-slate-600">
-        Connect your Telegram account to receive task notifications.
-      </p>
+      <h2 className="text-xl font-semibold text-slate-900">{t.title}</h2>
+      <p className="mt-2 text-sm text-slate-600">{t.subtitle}</p>
 
       {connection ? (
         <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Telegram is connected.
+          {t.connected}
           <br />
-          Username: {connection.telegramUsername ? `@${connection.telegramUsername}` : "not set"}
+          {t.username}: {connection.telegramUsername ? `@${connection.telegramUsername}` : t.notSet}
           <br />
-          Chat ID: {connection.chatId}
+          {t.chatId}: {connection.chatId}
         </div>
       ) : (
         <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          <p>1. Click Generate Linking Code.</p>
-          <p>2. Open your Telegram bot and send: `/link 123456` (replace with your code).</p>
-          <p>3. Once linked, new tasks from voice input will trigger Telegram notifications.</p>
+          <p>{t.step1}</p>
+          <p>{t.step2}</p>
+          <p>{t.step3}</p>
         </div>
       )}
 
@@ -94,16 +134,16 @@ export function TelegramLinkPanel({ initialConnection }: TelegramLinkPanelProps)
           disabled={loading}
           className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? "Generating..." : "Generate Linking Code"}
+          {loading ? t.generating : t.generateCode}
         </button>
       ) : null}
 
       {code ? (
         <div className="mt-4 rounded-md border border-indigo-200 bg-indigo-50 px-4 py-3">
-          <p className="text-sm text-indigo-700">One-time linking code:</p>
+          <p className="text-sm text-indigo-700">{t.oneTimeCode}</p>
           <p className="mt-1 font-mono text-3xl font-bold tracking-widest text-indigo-900">{code}</p>
           <p className="mt-2 text-xs text-indigo-700">
-            Expires at: {expiresAt ? new Date(expiresAt).toLocaleString() : "Unknown"}
+            {t.expiresAt}: {expiresAt ? new Date(expiresAt).toLocaleString() : t.unknown}
           </p>
         </div>
       ) : null}

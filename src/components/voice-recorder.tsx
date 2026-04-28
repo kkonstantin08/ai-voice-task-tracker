@@ -1,6 +1,11 @@
 "use client";
 
 import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
+import type { Locale } from "@/lib/i18n";
+
+type VoiceRecorderProps = {
+  locale: Locale;
+};
 
 type ProcessedTask = {
   id: string;
@@ -28,6 +33,44 @@ const preferredMimeTypes = [
   "audio/mp4",
 ];
 
+const labels = {
+  en: {
+    browserUnsupported: "Your browser does not support audio recording.",
+    micUnavailable: "Microphone permission denied or unavailable.",
+    recordFirst: "Record audio first.",
+    processFailed: "Failed to process voice note.",
+    networkError: "Network error while processing audio.",
+    title: "Voice Input",
+    subtitle:
+      "Record a voice note, upload it, and we will transcribe and extract a structured task.",
+    startRecording: "Start Recording",
+    stopRecording: "Stop Recording",
+    uploadAndProcess: "Upload & Process",
+    processing: "Processing...",
+    transcript: "Transcript",
+    noTranscript: "No transcript yet.",
+    extractedTaskJson: "Extracted Task JSON",
+    noTask: "No task extracted yet.",
+  },
+  ru: {
+    browserUnsupported: "Ваш браузер не поддерживает запись аудио.",
+    micUnavailable: "Нет доступа к микрофону или он недоступен.",
+    recordFirst: "Сначала запишите аудио.",
+    processFailed: "Не удалось обработать голосовую заметку.",
+    networkError: "Сетевая ошибка во время обработки аудио.",
+    title: "Голосовой ввод",
+    subtitle: "Запишите заметку, загрузите ее, и мы расшифруем речь и извлечем структуру задачи.",
+    startRecording: "Начать запись",
+    stopRecording: "Остановить запись",
+    uploadAndProcess: "Загрузить и обработать",
+    processing: "Обработка...",
+    transcript: "Транскрипт",
+    noTranscript: "Транскрипта пока нет.",
+    extractedTaskJson: "Извлеченная задача (JSON)",
+    noTask: "Задача пока не извлечена.",
+  },
+} as const;
+
 function extensionFromMimeType(mimeType: string): string {
   if (mimeType.includes("ogg")) return ".ogg";
   if (mimeType.includes("mp4") || mimeType.includes("m4a")) return ".m4a";
@@ -36,7 +79,8 @@ function extensionFromMimeType(mimeType: string): string {
   return ".webm";
 }
 
-export function VoiceRecorder() {
+export function VoiceRecorder({ locale }: VoiceRecorderProps) {
+  const t = labels[locale];
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -72,7 +116,7 @@ export function VoiceRecorder() {
     chunksRef.current = [];
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError("Your browser does not support audio recording.");
+      setError(t.browserUnsupported);
       return;
     }
 
@@ -106,7 +150,7 @@ export function VoiceRecorder() {
       recorder.start();
       setIsRecording(true);
     } catch {
-      setError("Microphone permission denied or unavailable.");
+      setError(t.micUnavailable);
     }
   }
 
@@ -124,7 +168,7 @@ export function VoiceRecorder() {
 
   async function uploadAudio() {
     if (!recordedBlob) {
-      setError("Record audio first.");
+      setError(t.recordFirst);
       return;
     }
 
@@ -149,7 +193,7 @@ export function VoiceRecorder() {
       const data = (await response.json()) as VoiceApiResponse;
 
       if (!response.ok) {
-        setError(data.error ?? "Failed to process voice note.");
+        setError(data.error ?? t.processFailed);
         return;
       }
 
@@ -157,7 +201,7 @@ export function VoiceRecorder() {
       setTask(data.task ?? null);
       setWarning(data.warning ?? null);
     } catch {
-      setError("Network error while processing audio.");
+      setError(t.networkError);
     } finally {
       setIsPending(false);
     }
@@ -165,10 +209,8 @@ export function VoiceRecorder() {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-xl font-semibold text-slate-900">Voice Input</h2>
-      <p className="mt-2 text-sm text-slate-600">
-        Record a voice note, upload it, and we will transcribe and extract a structured task.
-      </p>
+      <h2 className="text-xl font-semibold text-slate-900">{t.title}</h2>
+      <p className="mt-2 text-sm text-slate-600">{t.subtitle}</p>
 
       <div className="mt-5 flex flex-wrap gap-3">
         <button
@@ -177,7 +219,7 @@ export function VoiceRecorder() {
           disabled={isRecording || isPending}
           className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Start Recording
+          {t.startRecording}
         </button>
         <button
           type="button"
@@ -185,7 +227,7 @@ export function VoiceRecorder() {
           disabled={!isRecording || isPending}
           className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Stop Recording
+          {t.stopRecording}
         </button>
         <button
           type="button"
@@ -193,7 +235,7 @@ export function VoiceRecorder() {
           disabled={isRecording || !recordedBlob || isPending}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isPending ? "Processing..." : "Upload & Process"}
+          {isPending ? t.processing : t.uploadAndProcess}
         </button>
       </div>
 
@@ -211,18 +253,18 @@ export function VoiceRecorder() {
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Transcript</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">{t.transcript}</h3>
           <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
-            {deferredTranscript || "No transcript yet."}
+            {deferredTranscript || t.noTranscript}
           </p>
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-            Extracted Task JSON
+            {t.extractedTaskJson}
           </h3>
           <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-800">
-            {task ? JSON.stringify(task, null, 2) : "No task extracted yet."}
+            {task ? JSON.stringify(task, null, 2) : t.noTask}
           </pre>
         </div>
       </div>

@@ -1,17 +1,38 @@
 import Link from "next/link";
+import { LanguageToggle } from "@/components/language-toggle";
 import { LogoutButton } from "@/components/logout-button";
+import type { Locale } from "@/lib/i18n";
 
 type ProtectedNavProps = {
   email: string;
+  locale: Locale;
 };
 
-const links = [
-  { href: "/app", label: "Voice App" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/settings", label: "Settings" },
-];
+const labels = {
+  en: {
+    app: "Voice App",
+    dashboard: "Dashboard",
+    settings: "Settings",
+    logout: "Logout",
+    loggingOut: "Logging out...",
+  },
+  ru: {
+    app: "Голосовые задачи",
+    dashboard: "Дашборд",
+    settings: "Настройки",
+    logout: "Выйти",
+    loggingOut: "Выходим...",
+  },
+} as const;
 
-export function ProtectedNav({ email }: ProtectedNavProps) {
+export function ProtectedNav({ email, locale }: ProtectedNavProps) {
+  const t = labels[locale];
+  const links = [
+    { href: "/app", label: t.app },
+    { href: "/dashboard", label: t.dashboard },
+    { href: "/settings", label: t.settings },
+  ];
+
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 py-4">
@@ -33,8 +54,9 @@ export function ProtectedNav({ email }: ProtectedNavProps) {
         </div>
 
         <div className="flex items-center gap-3">
+          <LanguageToggle locale={locale} />
           <span className="hidden text-sm text-slate-500 sm:inline">{email}</span>
-          <LogoutButton />
+          <LogoutButton label={t.logout} loadingLabel={t.loggingOut} />
         </div>
       </div>
     </header>

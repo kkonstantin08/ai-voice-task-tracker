@@ -3,7 +3,11 @@ import { ALLOWED_AUDIO_EXTENSIONS, ALLOWED_AUDIO_MIME_TYPES, MAX_AUDIO_SIZE_BYTE
 import { prisma } from "@/lib/prisma";
 import { getRequestUser } from "@/lib/request-auth";
 import { extractTaskWithMistral, transcribeWithMistral } from "@/lib/mistral";
-import { sendTelegramMessage, taskCreatedMessage } from "@/lib/telegram";
+import {
+  normalizeTelegramUiLanguage,
+  sendTelegramMessage,
+  taskCreatedMessage,
+} from "@/lib/telegram";
 import { trackEvent } from "@/lib/analytics";
 
 function hasAllowedAudioExtension(filename: string): boolean {
@@ -103,9 +107,10 @@ export async function POST(request: NextRequest) {
 
       if (telegramConnection) {
         try {
+          const telegramLanguage = normalizeTelegramUiLanguage(telegramConnection.uiLanguage);
           await sendTelegramMessage(
             telegramConnection.chatId,
-            taskCreatedMessage(task.title, task.dueDate),
+            taskCreatedMessage(task.title, task.dueDate, telegramLanguage),
           );
           await trackEvent(user.id, "telegram_notification_sent", { taskId: task.id });
         } catch (error) {

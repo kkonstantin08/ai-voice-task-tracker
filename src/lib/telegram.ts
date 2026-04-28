@@ -1,5 +1,13 @@
 import { getTelegramBotToken } from "@/lib/env";
 
+export type TelegramUiLanguage = "en" | "ru";
+
+export function normalizeTelegramUiLanguage(
+  language: string | null | undefined,
+): TelegramUiLanguage {
+  return language === "ru" ? "ru" : "en";
+}
+
 export async function sendTelegramMessage(chatId: string, text: string) {
   const botToken = getTelegramBotToken();
 
@@ -23,7 +31,19 @@ export async function sendTelegramMessage(chatId: string, text: string) {
   return { ok: true as const };
 }
 
-export function taskCreatedMessage(title: string, dueDate: Date | null) {
-  const due = dueDate ? `\nDue: ${dueDate.toISOString()}` : "\nDue: not set";
-  return `✅ *New task created*\nTitle: ${title}${due}`;
+export function taskCreatedMessage(
+  title: string,
+  dueDate: Date | null,
+  language: TelegramUiLanguage = "en",
+) {
+  const dueLine =
+    language === "ru"
+      ? `\nСрок: ${dueDate ? dueDate.toISOString() : "не указан"}`
+      : `\nDue: ${dueDate ? dueDate.toISOString() : "not set"}`;
+
+  if (language === "ru") {
+    return `✅ *Новая задача создана*\nНазвание: ${title}${dueLine}`;
+  }
+
+  return `✅ *New task created*\nTitle: ${title}${dueLine}`;
 }
