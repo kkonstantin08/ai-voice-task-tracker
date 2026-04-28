@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 type LogoutButtonProps = {
   label: string;
@@ -32,12 +33,14 @@ export function LogoutButton({ label, loadingLabel, className }: LogoutButtonPro
   }
 
   return (
-    <button
+    <Button
       type="button"
       onClick={handleLogout}
-      className={`rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 ${className ?? ""}`.trim()}
+      variant="outline"
+      size="sm"
+      className={className}
     >
       {loading ? loadingLabel : label}
-    </button>
+    </Button>
   );
 }

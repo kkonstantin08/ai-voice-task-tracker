@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { getCurrentLocale } from "@/lib/i18n";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "AI Voice Task Tracker",
@@ -16,7 +20,7 @@ export default async function RootLayout({
   const locale = await getCurrentLocale();
 
   return (
-    <html lang={locale} className="h-full antialiased">
+    <html lang={locale} className={cn("h-full antialiased", "font-sans", geist.variable)}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

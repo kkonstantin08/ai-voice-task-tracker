@@ -26,14 +26,14 @@ const CALLBACK_CANCEL = "task:cancel";
 const text = {
   en: {
     start:
-      "Hello! To connect your account, send: /link 123456\nTo switch language: /lang ru or /lang en\nTo view tasks: /tasks\nTo complete task: /done <task_id>\nTo undo completion: /undo <task_id>",
+      "Hello! To connect your account, send: /link 123456\nTo switch language: /lang ru or /lang en\nTo view tasks: /tasks\nTo complete task: /done <task_id>\nTo undo completion: /undo <task_id>\nTo delete task: /delete <task_id>",
     unknown:
-      "Unknown command. Use /link 123456, /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
+      "Unknown command. Use /link 123456, /lang ru|en, /tasks, /done <task_id>, /undo <task_id>, /delete <task_id>.",
     invalidOrExpired: "Link code is invalid or expired. Generate a new code in app settings.",
     linked:
-      "Telegram linked successfully. You will receive task notifications.\nCommands: /lang ru|en, /tasks, /done <task_id>, /undo <task_id>",
+      "Telegram linked successfully. You will receive task notifications.\nCommands: /lang ru|en, /tasks, /done <task_id>, /undo <task_id>, /delete <task_id>",
     linkFirst:
-      "Link your account first with /link 123456, then use /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
+      "Link your account first with /link 123456, then use /lang ru|en, /tasks, /done <task_id>, /undo <task_id>, /delete <task_id>.",
     languageStatus: "Current bot language: EN\nUse /lang ru or /lang en",
     languageChangedToEn: "Bot language changed to EN.",
     languageChangedToRu: "Bot language changed to RU.",
@@ -47,8 +47,11 @@ const text = {
     undoUsage: "Usage: /undo <task_id>. Use /tasks to get IDs.",
     undoNotDone: "Task is not completed yet.",
     undoSuccess: "Task moved back to To do.",
+    deleteUsage: "Использование: /delete <task_id>. Смотрите ID через /tasks.",
+    deleteSuccess: "Задача удалена.",
     btnDone: "✅ Complete",
     btnUndo: "↩️ Undo",
+    btnDelete: "🗑️ Удалить",
     btnRefresh: "🔄 Refresh",
     btnConfirm: "✅ Confirm",
     btnCancel: "✖️ Cancel",
@@ -60,12 +63,15 @@ const text = {
     callbackActionCancelled: "Action cancelled.",
     callbackActionDonePrompt: "Confirm completion?",
     callbackActionUndoPrompt: "Confirm undo?",
+    callbackActionDeletePrompt: "Подтвердите удаление.",
     callbackCompleted: "Completed.",
     callbackUncompleted: "Moved back to To do.",
+    callbackDeleted: "Удалено.",
     callbackUnknownAction: "Unknown action.",
     callbackError: "Could not process action.",
     confirmDoneText: "Complete this task?",
     confirmUndoText: "Move this task back to To do?",
+    confirmDeleteText: "Удалить эту задачу?",
     taskLabel: "Task",
     statusLabel: "Status",
     statusTodo: "To do",
@@ -97,8 +103,11 @@ const text = {
     undoUsage: "Использование: /undo <task_id>. Смотрите ID через /tasks.",
     undoNotDone: "Задача и так не выполнена.",
     undoSuccess: "Задача возвращена в статус к выполнению.",
+    deleteUsage: "Usage: /delete <task_id>. Use /tasks to get IDs.",
+    deleteSuccess: "Task deleted.",
     btnDone: "✅ Выполнить",
     btnUndo: "↩️ Отменить",
+    btnDelete: "Delete",
     btnRefresh: "🔄 Обновить",
     btnConfirm: "✅ Подтвердить",
     btnCancel: "✖️ Отмена",
@@ -110,12 +119,15 @@ const text = {
     callbackActionCancelled: "Действие отменено.",
     callbackActionDonePrompt: "Подтвердите выполнение.",
     callbackActionUndoPrompt: "Подтвердите отмену выполнения.",
+    callbackActionDeletePrompt: "Confirm deletion?",
     callbackCompleted: "Выполнено.",
     callbackUncompleted: "Возвращено в «к выполнению».",
+    callbackDeleted: "Deleted.",
     callbackUnknownAction: "Неизвестное действие.",
     callbackError: "Не удалось обработать действие.",
     confirmDoneText: "Выполнить эту задачу?",
     confirmUndoText: "Вернуть задачу в статус «к выполнению»?",
+    confirmDeleteText: "Delete this task?",
     taskLabel: "Задача",
     statusLabel: "Статус",
     statusTodo: "К выполнению",
@@ -168,7 +180,7 @@ function parseCallbackData(rawData) {
   if (rawData === CALLBACK_REFRESH) return { kind: "refresh" };
   if (rawData === CALLBACK_CANCEL) return { kind: "cancel" };
 
-  const match = rawData.match(/^task:(intent|confirm):(done|undo):([a-zA-Z0-9_-]{6,})$/);
+  const match = rawData.match(/^task:(intent|confirm):(done|undo|delete):([a-zA-Z0-9_-]{6,})$/);
   if (!match) return { kind: "invalid" };
 
   return {
@@ -322,6 +334,10 @@ function buildTasksKeyboard(tasks, language) {
         text: `${textLabel} ${shortTaskId(task.id)}`,
         callback_data: callbackIntent(action, task.id),
       },
+      {
+        text: `${t.btnDelete} ${shortTaskId(task.id)}`,
+        callback_data: callbackIntent("delete", task.id),
+      },
     ];
   });
 
@@ -331,7 +347,12 @@ function buildTasksKeyboard(tasks, language) {
 
 function buildConfirmText(task, action, language) {
   const t = text[language];
-  const prompt = action === "done" ? t.confirmDoneText : t.confirmUndoText;
+  const prompt =
+    action === "done"
+      ? t.confirmDoneText
+      : action === "undo"
+        ? t.confirmUndoText
+        : t.confirmDeleteText;
   const status = formatTaskStatus(task.status, language);
   const title = escapeMarkdown(task.title).slice(0, 80);
   return `⚠️ *${prompt}*\n\n${t.taskLabel}: ${title}\nID: \`${shortTaskId(task.id)}\`\n${t.statusLabel}: ${status}`;
@@ -451,6 +472,43 @@ async function handleUndoCommand(chatId, userId, commandText, language) {
   await sendTelegramMessage(chatId, `${t.undoSuccess}\n${task.id}`);
 }
 
+async function handleDeleteCommand(chatId, userId, commandText, language) {
+  const t = text[language];
+  const match = commandText.match(/^\/delete(?:@\w+)?\s+([a-zA-Z0-9_-]{4,})$/);
+  if (!match) {
+    await sendTelegramMessage(chatId, t.deleteUsage);
+    return;
+  }
+
+  const taskRef = match[1];
+  const matches = await findTaskByRef(userId, taskRef);
+
+  if (matches.length === 0) {
+    await sendTelegramMessage(chatId, t.doneNotFound);
+    return;
+  }
+
+  if (matches.length > 1) {
+    await sendTelegramMessage(chatId, t.doneAmbiguous);
+    return;
+  }
+
+  const task = matches[0];
+  await prisma.task.delete({
+    where: { id: task.id },
+  });
+
+  await prisma.analyticsEvent.create({
+    data: {
+      userId,
+      eventName: "task_deleted_from_telegram",
+      metadata: { taskId: task.id },
+    },
+  });
+
+  await sendTelegramMessage(chatId, `${t.deleteSuccess}\n${task.id}`);
+}
+
 async function handleCallbackQuery(update) {
   const callback = update.callback_query;
   if (!callback?.id) {
@@ -524,8 +582,28 @@ async function handleCallbackQuery(update) {
 
       await answerTelegramCallback(
         callback.id,
-        callbackData.action === "done" ? t.callbackActionDonePrompt : t.callbackActionUndoPrompt,
+        callbackData.action === "done"
+          ? t.callbackActionDonePrompt
+          : callbackData.action === "undo"
+            ? t.callbackActionUndoPrompt
+            : t.callbackActionDeletePrompt,
       );
+      return;
+    }
+
+    if (callbackData.action === "delete") {
+      await prisma.task.delete({
+        where: { id: task.id },
+      });
+      await prisma.analyticsEvent.create({
+        data: {
+          userId,
+          eventName: "task_deleted_from_telegram",
+          metadata: { taskId: task.id },
+        },
+      });
+      await refreshTasksMessage(chatId, messageId, userId, language);
+      await answerTelegramCallback(callback.id, t.callbackDeleted);
       return;
     }
 
@@ -668,6 +746,15 @@ async function processTelegramUpdate(update) {
       return;
     }
     await handleUndoCommand(chatId, existingConnection.userId, commandText, currentLanguage);
+    return;
+  }
+
+  if (commandText.match(/^\/delete(?:@\w+)?/i)) {
+    if (!existingConnection) {
+      await sendTelegramMessage(chatId, t.linkFirst);
+      return;
+    }
+    await handleDeleteCommand(chatId, existingConnection.userId, commandText, currentLanguage);
     return;
   }
 

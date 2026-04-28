@@ -35,6 +35,11 @@ type CompleteTaskResponse = {
   task?: ProcessedTask;
 };
 
+type DeleteTaskResponse = {
+  error?: string;
+  deletedTaskId?: string;
+};
+
 const preferredMimeTypes = [
   "audio/webm;codecs=opus",
   "audio/webm",
@@ -52,6 +57,7 @@ const labels = {
     networkError: "Network error while processing audio.",
     loadTasksFailed: "Failed to load your voice tasks.",
     completeTaskFailed: "Failed to complete task.",
+    deleteTaskFailed: "Failed to delete task.",
     title: "Voice Input",
     subtitle:
       "Record a voice note, upload it, and we will transcribe and extract a structured task.",
@@ -76,7 +82,9 @@ const labels = {
     undoDone: "Undo completion",
     completing: "Completing...",
     undoing: "Undoing...",
+    deleting: "Deleting...",
     completed: "Completed",
+    deleteTask: "Delete",
   },
   ru: {
     browserUnsupported: "Ваш браузер не поддерживает запись аудио.",
@@ -86,6 +94,7 @@ const labels = {
     networkError: "Сетевая ошибка во время обработки аудио.",
     loadTasksFailed: "Не удалось загрузить голосовые задачи.",
     completeTaskFailed: "Не удалось отметить задачу выполненной.",
+    deleteTaskFailed: "Не удалось удалить задачу.",
     title: "Голосовой ввод",
     subtitle: "Запишите заметку, загрузите ее, и мы расшифруем речь и извлечем структуру задачи.",
     startRecording: "Начать запись",
@@ -109,7 +118,9 @@ const labels = {
     undoDone: "Отменить выполнение",
     completing: "Выполняем...",
     undoing: "Отменяем...",
+    deleting: "Удаляем...",
     completed: "Выполнено",
+    deleteTask: "Удалить",
   },
 } as const;
 
@@ -143,6 +154,9 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
   const [isPending, setIsPending] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  const [updatingAction, setUpdatingAction] = useState<"complete" | "uncomplete" | "delete" | null>(
+    null,
+  );
 
   const deferredTranscript = useDeferredValue(transcript);
 
@@ -294,41 +308,63 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
     }
   }
 
-  async function updateTaskStatus(taskId: string, action: "complete" | "uncomplete") {
+  async function updateTaskStatus(taskId: string, action: "complete" | "uncomplete" | "delete") {
     if (updatingTaskId) {
       return;
     }
 
     setUpdatingTaskId(taskId);
+    setUpdatingAction(action);
     setTasksError(null);
     try {
-      const response = await fetch(
-        action === "complete" ? "/api/tasks/voice/complete" : "/api/tasks/voice/uncomplete",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ taskId }),
+      const endpoint =
+        action === "complete"
+          ? "/api/tasks/voice/complete"
+          : action === "uncomplete"
+            ? "/api/tasks/voice/uncomplete"
+            : "/api/tasks/voice/delete";
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        credentials: "include",
+        body: JSON.stringify({ taskId }),
+      });
+
+      if (action === "delete") {
+        const data = (await response.json()) as DeleteTaskResponse;
+        if (!response.ok || !data.deletedTaskId) {
+          setTasksError(data.error ?? t.deleteTaskFailed);
+          return;
+        }
+
+        setVoiceTasks((prev) => sortTasksByCreatedAt(prev.filter((item) => item.id !== taskId)));
+        if (task?.id === taskId) {
+          setTask(null);
+        }
+        return;
+      }
+
       const data = (await response.json()) as CompleteTaskResponse;
       if (!response.ok || !data.task) {
         setTasksError(data.error ?? t.completeTaskFailed);
         return;
       }
 
-      setVoiceTasks((prev) =>
-        sortTasksByCreatedAt(prev.map((item) => (item.id === taskId ? data.task! : item))),
-      );
+      setVoiceTasks((prev) => {
+        const updated = prev.map((item) => (item.id === taskId ? data.task! : item));
+        return sortTasksByCreatedAt(updated);
+      });
       if (task?.id === taskId) {
         setTask(data.task);
       }
     } catch {
-      setTasksError(t.completeTaskFailed);
+      setTasksError(action === "delete" ? t.deleteTaskFailed : t.completeTaskFailed);
     } finally {
       setUpdatingTaskId(null);
+      setUpdatingAction(null);
     }
   }
 
@@ -436,22 +472,34 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
                     <p className="mt-1 text-xs text-slate-500">{statusLabel(item.status)}</p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void updateTaskStatus(item.id, isDone ? "uncomplete" : "complete")
-                    }
-                    disabled={isUpdating || Boolean(updatingTaskId)}
-                    className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isUpdating
-                      ? isDone
-                        ? t.undoing
-                        : t.completing
-                      : isDone
-                        ? t.undoDone
-                        : t.markDone}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void updateTaskStatus(item.id, isDone ? "uncomplete" : "complete")
+                      }
+                      disabled={isUpdating || Boolean(updatingTaskId)}
+                      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isUpdating
+                        ? updatingAction === "delete"
+                          ? t.deleting
+                          : isDone
+                            ? t.undoing
+                            : t.completing
+                        : isDone
+                          ? t.undoDone
+                          : t.markDone}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void updateTaskStatus(item.id, "delete")}
+                      disabled={isUpdating || Boolean(updatingTaskId)}
+                      className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isUpdating && updatingAction === "delete" ? t.deleting : t.deleteTask}
+                    </button>
+                  </div>
                 </li>
               );
             })}

@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { LanguageToggle } from "@/components/language-toggle";
 import { LogoutButton } from "@/components/logout-button";
+import { buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { Locale } from "@/lib/i18n";
 
 type ProtectedNavProps = {
@@ -10,7 +13,7 @@ type ProtectedNavProps = {
 
 const labels = {
   en: {
-    app: "Voice App",
+    app: "Voice Tasks",
     dashboard: "Dashboard",
     settings: "Settings",
     logout: "Logout",
@@ -34,39 +37,41 @@ export function ProtectedNav({ email, locale }: ProtectedNavProps) {
   ];
 
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto w-full max-w-5xl px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <Link href="/app" className="min-w-0 truncate text-base font-semibold text-slate-900 sm:text-lg">
-              AI Voice Task Tracker
-            </Link>
-            <LanguageToggle locale={locale} size="compact" className="shrink-0" />
-          </div>
+    <header className="border-b border-border/70 bg-background/95 backdrop-blur">
+      <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-6 sm:py-4">
+        <Card className="rounded-2xl py-3">
+          <div className="flex flex-col gap-3 px-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <Link href="/app" className="truncate text-base font-semibold text-foreground sm:text-lg">
+                AI Voice Task Tracker
+              </Link>
+              <LanguageToggle locale={locale} size="compact" className="shrink-0" />
+            </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 md:flex-nowrap md:justify-end md:gap-3">
-            <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1 sm:gap-2 md:flex-none md:gap-3">
-              {links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900 sm:text-sm"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
+            <div className="flex flex-wrap items-center justify-between gap-2 md:flex-nowrap md:justify-end md:gap-3">
+              <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2 md:flex-none">
+                {links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-xs sm:text-sm")}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <span className="hidden max-w-40 truncate text-sm text-slate-500 lg:inline">{email}</span>
-              <LogoutButton
-                label={t.logout}
-                loadingLabel={t.loggingOut}
-                className="px-2.5 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm"
-              />
+              <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+                <span className="hidden max-w-40 truncate text-sm text-muted-foreground lg:inline">{email}</span>
+                <LogoutButton
+                  label={t.logout}
+                  loadingLabel={t.loggingOut}
+                  className="h-7 px-2.5 text-xs sm:h-8 sm:px-3 sm:text-sm"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </Card>
       </div>
     </header>
   );

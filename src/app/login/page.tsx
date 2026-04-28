@@ -12,7 +12,7 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_hsl(220_30%_97%)_0%,_hsl(0_0%_100%)_45%,_hsl(210_30%_96%)_100%)]">
       <div className="mx-auto flex w-full max-w-5xl justify-end px-4 pt-4 sm:px-6 sm:pt-6">
         <LanguageToggle locale={locale} size="compact" />
       </div>
