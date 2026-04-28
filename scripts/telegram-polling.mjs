@@ -229,13 +229,11 @@ async function telegramRequest(method, payload) {
 }
 
 function toApiMessageOptions(options) {
-  if (!options) {
-    return { parse_mode: "Markdown" };
-  }
-
   const payload = {};
-  payload.parse_mode = options.parseMode ?? "Markdown";
-  if (options.replyMarkup) {
+  if (options?.parseMode) {
+    payload.parse_mode = options.parseMode;
+  }
+  if (options?.replyMarkup) {
     payload.reply_markup = options.replyMarkup;
   }
   return payload;

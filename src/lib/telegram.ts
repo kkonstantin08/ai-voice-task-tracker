@@ -19,24 +19,16 @@ export type TelegramMessageOptions = {
 };
 
 function toApiMessageOptions(options?: TelegramMessageOptions) {
-  if (!options) {
-    return {
-      parse_mode: "Markdown" as TelegramParseMode,
-    };
-  }
-
   const payload: {
     parse_mode?: TelegramParseMode;
     reply_markup?: TelegramInlineKeyboardMarkup;
   } = {};
 
-  if (options.parseMode) {
+  if (options?.parseMode) {
     payload.parse_mode = options.parseMode;
-  } else {
-    payload.parse_mode = "Markdown";
   }
 
-  if (options.replyMarkup) {
+  if (options?.replyMarkup) {
     payload.reply_markup = options.replyMarkup;
   }
 
