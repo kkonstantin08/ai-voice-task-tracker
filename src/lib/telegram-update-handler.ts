@@ -1,24 +1,61 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
+  answerTelegramCallback,
+  editTelegramMessage,
   normalizeTelegramUiLanguage,
   sendTelegramMessage,
+  type TelegramInlineKeyboardMarkup,
   type TelegramUiLanguage,
 } from "@/lib/telegram";
 import { trackEvent } from "@/lib/analytics";
 
-export type TelegramUpdate = {
-  update_id?: number;
-  message?: {
-    text?: string;
-    chat?: {
-      id?: number | string;
-    };
-    from?: {
-      username?: string;
-    };
+type TelegramChat = {
+  id?: number | string;
+};
+
+type TelegramMessage = {
+  message_id?: number;
+  text?: string;
+  chat?: TelegramChat;
+  from?: {
+    username?: string;
   };
 };
+
+type TelegramCallbackQuery = {
+  id?: string;
+  data?: string;
+  message?: {
+    message_id?: number;
+    chat?: TelegramChat;
+  };
+};
+
+export type TelegramUpdate = {
+  update_id?: number;
+  message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
+};
+
+type VoiceTaskLite = {
+  id: string;
+  title: string;
+  status: "todo" | "in_progress" | "done";
+};
+
+type TaskAction = "done" | "undo";
+
+type ParsedCallbackData =
+  | { kind: "refresh" }
+  | { kind: "cancel" }
+  | { kind: "intent"; action: TaskAction; taskId: string }
+  | { kind: "confirm"; action: TaskAction; taskId: string }
+  | { kind: "invalid" };
+
+const TASKS_LIMIT = 5;
+const CALLBACK_REFRESH = "tasks:refresh";
+const CALLBACK_CANCEL = "task:cancel";
 
 const text = {
   en: {
@@ -33,8 +70,8 @@ const text = {
       "Link your account first with /link 123456, then use /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
     languageStatus: "Current bot language: EN\nUse /lang ru or /lang en",
     languageChangedToEn: "Bot language changed to EN.",
-    languageChangedToRu: "Язык бота изменен на RU.",
-    tasksHeader: "Recent voice tasks:",
+    languageChangedToRu: "Bot language changed to RU.",
+    tasksHeader: "🗂 *Recent voice tasks*",
     tasksEmpty: "No voice-created tasks yet.",
     doneUsage: "Usage: /done <task_id>. Use /tasks to get IDs.",
     doneNotFound: "Task not found for this account.",
@@ -44,6 +81,31 @@ const text = {
     undoUsage: "Usage: /undo <task_id>. Use /tasks to get IDs.",
     undoNotDone: "Task is not completed yet.",
     undoSuccess: "Task moved back to To do.",
+    btnDone: "✅ Complete",
+    btnUndo: "↩️ Undo",
+    btnRefresh: "🔄 Refresh",
+    btnConfirm: "✅ Confirm",
+    btnCancel: "✖️ Cancel",
+    callbackNeedLink: "Link account first.",
+    callbackTasksRefreshed: "List updated.",
+    callbackTaskNotFound: "Task not found.",
+    callbackAlreadyDone: "Task is already done.",
+    callbackNotDone: "Task is not done yet.",
+    callbackActionCancelled: "Action cancelled.",
+    callbackActionDonePrompt: "Confirm completion?",
+    callbackActionUndoPrompt: "Confirm undo?",
+    callbackCompleted: "Completed.",
+    callbackUncompleted: "Moved back to To do.",
+    callbackUnknownAction: "Unknown action.",
+    callbackError: "Could not process action.",
+    confirmDoneText: "Complete this task?",
+    confirmUndoText: "Move this task back to To do?",
+    taskLabel: "Task",
+    statusLabel: "Status",
+    taskMissingInMessage: "Task details are no longer available.",
+    statusTodo: "To do",
+    statusInProgress: "In progress",
+    statusDone: "Done",
   },
   ru: {
     start:
@@ -57,9 +119,9 @@ const text = {
     linkFirst:
       "Сначала привяжите аккаунт через /link 123456, затем используйте /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
     languageStatus: "Текущий язык бота: RU\nИспользуйте /lang ru или /lang en",
-    languageChangedToEn: "Bot language changed to EN.",
+    languageChangedToEn: "Язык бота изменен на EN.",
     languageChangedToRu: "Язык бота изменен на RU.",
-    tasksHeader: "Последние голосовые задачи:",
+    tasksHeader: "🗂 *Последние голосовые задачи*",
     tasksEmpty: "Пока нет голосовых задач.",
     doneUsage: "Использование: /done <task_id>. Смотрите ID через /tasks.",
     doneNotFound: "Задача для этого аккаунта не найдена.",
@@ -70,11 +132,36 @@ const text = {
     undoUsage: "Использование: /undo <task_id>. Смотрите ID через /tasks.",
     undoNotDone: "Задача и так не выполнена.",
     undoSuccess: "Задача возвращена в статус к выполнению.",
+    btnDone: "✅ Выполнить",
+    btnUndo: "↩️ Отменить",
+    btnRefresh: "🔄 Обновить",
+    btnConfirm: "✅ Подтвердить",
+    btnCancel: "✖️ Отмена",
+    callbackNeedLink: "Сначала привяжите аккаунт.",
+    callbackTasksRefreshed: "Список обновлен.",
+    callbackTaskNotFound: "Задача не найдена.",
+    callbackAlreadyDone: "Задача уже выполнена.",
+    callbackNotDone: "Задача еще не выполнена.",
+    callbackActionCancelled: "Действие отменено.",
+    callbackActionDonePrompt: "Подтвердите выполнение.",
+    callbackActionUndoPrompt: "Подтвердите отмену выполнения.",
+    callbackCompleted: "Выполнено.",
+    callbackUncompleted: "Возвращено в «к выполнению».",
+    callbackUnknownAction: "Неизвестное действие.",
+    callbackError: "Не удалось обработать действие.",
+    confirmDoneText: "Выполнить эту задачу?",
+    confirmUndoText: "Вернуть задачу в статус «к выполнению»?",
+    taskLabel: "Задача",
+    statusLabel: "Статус",
+    taskMissingInMessage: "Данные задачи больше недоступны.",
+    statusTodo: "К выполнению",
+    statusInProgress: "В процессе",
+    statusDone: "Выполнено",
   },
 } as const;
 
-function extractChatId(update: TelegramUpdate): string | null {
-  const chatId = update.message?.chat?.id;
+function extractChatId(chat: TelegramChat | undefined): string | null {
+  const chatId = chat?.id;
   if (chatId === undefined || chatId === null) {
     return null;
   }
@@ -97,25 +184,82 @@ function escapeMarkdown(textValue: string): string {
   return textValue.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
 }
 
-function formatTaskStatus(status: "todo" | "in_progress" | "done", language: TelegramUiLanguage) {
-  if (language === "ru") {
-    if (status === "done") return "Выполнено";
-    if (status === "in_progress") return "В процессе";
-    return "К выполнению";
-  }
-  if (status === "done") return "Done";
-  if (status === "in_progress") return "In progress";
-  return "To do";
+function shortTaskId(id: string): string {
+  return id.slice(-6);
 }
 
-async function getRecentVoiceTasks(userId: string) {
-  return prisma.task.findMany({
+function formatTaskStatus(status: VoiceTaskLite["status"], language: TelegramUiLanguage): string {
+  const t = text[language];
+  if (status === "done") return t.statusDone;
+  if (status === "in_progress") return t.statusInProgress;
+  return t.statusTodo;
+}
+
+function callbackIntent(action: TaskAction, taskId: string) {
+  return `task:intent:${action}:${taskId}`;
+}
+
+function callbackConfirm(action: TaskAction, taskId: string) {
+  return `task:confirm:${action}:${taskId}`;
+}
+
+function parseCallbackData(rawData: string | undefined): ParsedCallbackData {
+  if (!rawData) return { kind: "invalid" };
+  if (rawData === CALLBACK_REFRESH) return { kind: "refresh" };
+  if (rawData === CALLBACK_CANCEL) return { kind: "cancel" };
+
+  const match = rawData.match(/^task:(intent|confirm):(done|undo):([a-zA-Z0-9_-]{6,})$/);
+  if (!match) {
+    return { kind: "invalid" };
+  }
+
+  const kind = match[1] as "intent" | "confirm";
+  const action = match[2] as TaskAction;
+  const taskId = match[3];
+  return { kind, action, taskId };
+}
+
+async function getRecentVoiceTasks(userId: string): Promise<VoiceTaskLite[]> {
+  const tasks = await prisma.task.findMany({
     where: {
       userId,
       voiceInputId: { not: null },
     },
     orderBy: { createdAt: "desc" },
-    take: 15,
+    take: TASKS_LIMIT,
+    select: {
+      id: true,
+      title: true,
+      status: true,
+    },
+  });
+
+  return tasks as VoiceTaskLite[];
+}
+
+async function findTaskByRef(userId: string, taskRef: string) {
+  return prisma.task.findMany({
+    where: {
+      userId,
+      voiceInputId: { not: null },
+      OR: [{ id: taskRef }, { id: { startsWith: taskRef } }],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 3,
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+}
+
+async function findTaskById(userId: string, taskId: string) {
+  return prisma.task.findFirst({
+    where: {
+      id: taskId,
+      userId,
+      voiceInputId: { not: null },
+    },
     select: {
       id: true,
       title: true,
@@ -124,25 +268,81 @@ async function getRecentVoiceTasks(userId: string) {
   });
 }
 
-async function handleTasksCommand(
+function buildTasksText(tasks: VoiceTaskLite[], language: TelegramUiLanguage): string {
+  const t = text[language];
+  if (tasks.length === 0) {
+    return `${t.tasksHeader}\n${t.tasksEmpty}`;
+  }
+
+  const lines = tasks.map((task, index) => {
+    const title = escapeMarkdown(task.title).slice(0, 80);
+    const status = formatTaskStatus(task.status, language);
+    return `${index + 1}. ${title}\n\`${shortTaskId(task.id)}\` • ${status}`;
+  });
+
+  return `${t.tasksHeader}\n\n${lines.join("\n\n")}`;
+}
+
+function buildTasksKeyboard(
+  tasks: VoiceTaskLite[],
+  language: TelegramUiLanguage,
+): TelegramInlineKeyboardMarkup {
+  const t = text[language];
+  const inline_keyboard: TelegramInlineKeyboardMarkup["inline_keyboard"] = tasks.map((task) => {
+    const action: TaskAction = task.status === "done" ? "undo" : "done";
+    const textLabel = action === "done" ? t.btnDone : t.btnUndo;
+    return [
+      {
+        text: `${textLabel} ${shortTaskId(task.id)}`,
+        callback_data: callbackIntent(action, task.id),
+      },
+    ];
+  });
+
+  inline_keyboard.push([{ text: t.btnRefresh, callback_data: CALLBACK_REFRESH }]);
+
+  return { inline_keyboard };
+}
+
+function buildConfirmText(task: VoiceTaskLite, action: TaskAction, language: TelegramUiLanguage): string {
+  const t = text[language];
+  const prompt = action === "done" ? t.confirmDoneText : t.confirmUndoText;
+  const status = formatTaskStatus(task.status, language);
+  const title = escapeMarkdown(task.title).slice(0, 80);
+  return `⚠️ *${prompt}*\n\n${t.taskLabel}: ${title}\nID: \`${shortTaskId(task.id)}\`\n${t.statusLabel}: ${status}`;
+}
+
+function buildConfirmKeyboard(taskId: string, action: TaskAction, language: TelegramUiLanguage) {
+  const t = text[language];
+  return {
+    inline_keyboard: [
+      [
+        { text: t.btnConfirm, callback_data: callbackConfirm(action, taskId) },
+        { text: t.btnCancel, callback_data: CALLBACK_CANCEL },
+      ],
+    ],
+  } satisfies TelegramInlineKeyboardMarkup;
+}
+
+async function refreshTasksMessage(
   chatId: string,
+  messageId: number,
   userId: string,
   language: TelegramUiLanguage,
 ) {
-  const t = text[language];
   const tasks = await getRecentVoiceTasks(userId);
-  if (tasks.length === 0) {
-    await sendTelegramMessage(chatId, t.tasksEmpty);
-    return;
-  }
-
-  const lines = tasks.map((task) => {
-    const title = escapeMarkdown(task.title).slice(0, 80);
-    const status = formatTaskStatus(task.status, language);
-    return `- ${task.id} — ${title} \\(${status}\\)`;
+  await editTelegramMessage(chatId, messageId, buildTasksText(tasks, language), {
+    parseMode: "Markdown",
+    replyMarkup: buildTasksKeyboard(tasks, language),
   });
+}
 
-  await sendTelegramMessage(chatId, `${t.tasksHeader}\n${lines.join("\n")}`);
+async function handleTasksCommand(chatId: string, userId: string, language: TelegramUiLanguage) {
+  const tasks = await getRecentVoiceTasks(userId);
+  await sendTelegramMessage(chatId, buildTasksText(tasks, language), {
+    parseMode: "Markdown",
+    replyMarkup: buildTasksKeyboard(tasks, language),
+  });
 }
 
 async function handleDoneCommand(
@@ -186,22 +386,6 @@ async function handleDoneCommand(
   await sendTelegramMessage(chatId, `${t.doneSuccess}\n${task.id}`);
 }
 
-async function findTaskByRef(userId: string, taskRef: string) {
-  return prisma.task.findMany({
-    where: {
-      userId,
-      voiceInputId: { not: null },
-      OR: [{ id: taskRef }, { id: { startsWith: taskRef } }],
-    },
-    orderBy: { createdAt: "desc" },
-    take: 3,
-    select: {
-      id: true,
-      status: true,
-    },
-  });
-}
-
 async function handleUndoCommand(
   chatId: string,
   userId: string,
@@ -243,10 +427,132 @@ async function handleUndoCommand(
   await sendTelegramMessage(chatId, `${t.undoSuccess}\n${task.id}`);
 }
 
+async function handleCallbackQuery(update: TelegramUpdate) {
+  const callback = update.callback_query;
+  if (!callback?.id) {
+    return { handled: false as const };
+  }
+
+  const callbackData = parseCallbackData(callback.data);
+  const chatId = extractChatId(callback.message?.chat);
+  const messageId = callback.message?.message_id;
+
+  if (!chatId || !messageId) {
+    await answerTelegramCallback(callback.id, "Message is unavailable.");
+    return { handled: true as const };
+  }
+
+  const existingConnection = await prisma.telegramConnection.findFirst({
+    where: { chatId },
+    select: { userId: true, uiLanguage: true },
+  });
+
+  const language = normalizeTelegramUiLanguage(existingConnection?.uiLanguage);
+  const t = text[language];
+
+  if (!existingConnection) {
+    await answerTelegramCallback(callback.id, t.callbackNeedLink);
+    return { handled: true as const };
+  }
+
+  const userId = existingConnection.userId;
+
+  try {
+    if (callbackData.kind === "refresh") {
+      await refreshTasksMessage(chatId, messageId, userId, language);
+      await answerTelegramCallback(callback.id, t.callbackTasksRefreshed);
+      return { handled: true as const };
+    }
+
+    if (callbackData.kind === "cancel") {
+      await refreshTasksMessage(chatId, messageId, userId, language);
+      await answerTelegramCallback(callback.id, t.callbackActionCancelled);
+      return { handled: true as const };
+    }
+
+    if (callbackData.kind === "invalid") {
+      await answerTelegramCallback(callback.id, t.callbackUnknownAction);
+      return { handled: true as const };
+    }
+
+    const task = await findTaskById(userId, callbackData.taskId);
+    if (!task) {
+      await refreshTasksMessage(chatId, messageId, userId, language);
+      await answerTelegramCallback(callback.id, t.callbackTaskNotFound);
+      return { handled: true as const };
+    }
+
+    if (callbackData.kind === "intent") {
+      if (callbackData.action === "done" && task.status === "done") {
+        await refreshTasksMessage(chatId, messageId, userId, language);
+        await answerTelegramCallback(callback.id, t.callbackAlreadyDone);
+        return { handled: true as const };
+      }
+
+      if (callbackData.action === "undo" && task.status !== "done") {
+        await refreshTasksMessage(chatId, messageId, userId, language);
+        await answerTelegramCallback(callback.id, t.callbackNotDone);
+        return { handled: true as const };
+      }
+
+      await editTelegramMessage(chatId, messageId, buildConfirmText(task as VoiceTaskLite, callbackData.action, language), {
+        parseMode: "Markdown",
+        replyMarkup: buildConfirmKeyboard(task.id, callbackData.action, language),
+      });
+
+      await answerTelegramCallback(
+        callback.id,
+        callbackData.action === "done" ? t.callbackActionDonePrompt : t.callbackActionUndoPrompt,
+      );
+      return { handled: true as const };
+    }
+
+    if (callbackData.action === "done") {
+      if (task.status === "done") {
+        await refreshTasksMessage(chatId, messageId, userId, language);
+        await answerTelegramCallback(callback.id, t.callbackAlreadyDone);
+        return { handled: true as const };
+      }
+
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { status: "done" },
+      });
+      await trackEvent(userId, "task_completed_from_telegram", { taskId: task.id });
+      await refreshTasksMessage(chatId, messageId, userId, language);
+      await answerTelegramCallback(callback.id, t.callbackCompleted);
+      return { handled: true as const };
+    }
+
+    if (task.status !== "done") {
+      await refreshTasksMessage(chatId, messageId, userId, language);
+      await answerTelegramCallback(callback.id, t.callbackNotDone);
+      return { handled: true as const };
+    }
+
+    await prisma.task.update({
+      where: { id: task.id },
+      data: { status: "todo" },
+    });
+    await trackEvent(userId, "task_uncompleted_from_telegram", { taskId: task.id });
+    await refreshTasksMessage(chatId, messageId, userId, language);
+    await answerTelegramCallback(callback.id, t.callbackUncompleted);
+    return { handled: true as const };
+  } catch (error) {
+    console.error("Telegram callback processing failed", error);
+    await answerTelegramCallback(callback.id, t.callbackError);
+    return { handled: true as const };
+  }
+}
+
 export async function handleTelegramUpdate(update: TelegramUpdate) {
+  if (update.callback_query) {
+    return handleCallbackQuery(update);
+  }
+
   const rawText = update.message?.text ?? "";
   const commandText = rawText.trim();
-  const chatId = extractChatId(update);
+  const chatId = extractChatId(update.message?.chat);
   const username = update.message?.from?.username ?? null;
 
   if (!chatId || !commandText) {
@@ -274,7 +580,10 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
     const requestedLanguage = parseLanguageCommand(commandText);
     const hasArgument = /^\/lang(?:@\w+)?\s+/i.test(commandText);
     if (!hasArgument) {
-      await sendTelegramMessage(chatId, currentLanguage === "ru" ? text.ru.languageStatus : text.en.languageStatus);
+      await sendTelegramMessage(
+        chatId,
+        currentLanguage === "ru" ? text.ru.languageStatus : text.en.languageStatus,
+      );
       return { handled: true as const };
     }
 
@@ -383,6 +692,5 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
   });
 
   await sendTelegramMessage(chatId, text.en.linked);
-
   return { handled: true as const, linkedUserId: codeRecord.userId };
 }
