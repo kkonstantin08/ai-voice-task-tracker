@@ -1,48 +1,25 @@
 import { TaskCategory } from "@prisma/client";
 import { ProtectedNav } from "@/components/protected-nav";
+import { getDashboardStats } from "@/lib/dashboard-stats";
 import { getCurrentLocale } from "@/lib/i18n";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/server-auth";
 
-function percentage(numerator: number, denominator: number): string {
-  if (denominator === 0) {
-    return "0%";
-  }
-  return `${((numerator / denominator) * 100).toFixed(1)}%`;
-}
-
 export default async function DashboardPage() {
   const locale = await getCurrentLocale();
   const user = await requireUser();
-
-  const [totalTasks, totalVoiceInputs, groupedCategories, recentTasks, voiceUploadedEvents, transcriptionEvents, taskCreatedEvents] =
-    await Promise.all([
-      prisma.task.count({ where: { userId: user.id } }),
-      prisma.voiceInput.count({ where: { userId: user.id } }),
-      prisma.task.groupBy({
-        by: ["category"],
-        where: { userId: user.id },
-        _count: { category: true },
-      }),
-      prisma.task.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      }),
-      prisma.analyticsEvent.count({
-        where: { userId: user.id, eventName: "voice_uploaded" },
-      }),
-      prisma.analyticsEvent.count({
-        where: { userId: user.id, eventName: "transcription_succeeded" },
-      }),
-      prisma.analyticsEvent.count({
-        where: { userId: user.id, eventName: "task_created_from_voice" },
-      }),
-    ]);
+  const [stats, recentTasks] = await Promise.all([
+    getDashboardStats(user.id),
+    prisma.task.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
+  ]);
 
   const categoryLookup = new Map<TaskCategory, number>();
-  for (const group of groupedCategories) {
-    categoryLookup.set(group.category, group._count.category);
+  for (const [category, count] of Object.entries(stats.categoryCounts)) {
+    categoryLookup.set(category as TaskCategory, count);
   }
 
   const categoryNames: TaskCategory[] = [
@@ -68,7 +45,7 @@ export default async function DashboardPage() {
       funnel: "Funnel Analytics",
       voiceUploaded: "Voice Uploaded",
       transcriptionSucceeded: "Transcription Succeeded",
-      taskCreated: "Task Created",
+      taskCreated: "Voice Tasks",
       recentTasks: "Recent Tasks",
       noTasks: "No tasks yet. Create one from a voice note.",
       colTitle: "Title",
@@ -88,7 +65,7 @@ export default async function DashboardPage() {
       funnel: "Аналитика воронки",
       voiceUploaded: "Голос загружен",
       transcriptionSucceeded: "Транскрипция успешна",
-      taskCreated: "Задача создана",
+      taskCreated: "Голосовые задачи",
       recentTasks: "Последние задачи",
       noTasks: "Задач пока нет. Создайте первую из голосовой заметки.",
       colTitle: "Заголовок",
@@ -110,23 +87,19 @@ export default async function DashboardPage() {
         <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">{t.totalTasks}</p>
-            <p className="mt-1 text-3xl font-bold text-slate-900">{totalTasks}</p>
+            <p className="mt-1 text-3xl font-bold text-slate-900">{stats.totalTasks}</p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">{t.totalVoiceInputs}</p>
-            <p className="mt-1 text-3xl font-bold text-slate-900">{totalVoiceInputs}</p>
+            <p className="mt-1 text-3xl font-bold text-slate-900">{stats.totalVoiceInputs}</p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">{t.transcriptionRate}</p>
-            <p className="mt-1 text-3xl font-bold text-slate-900">
-              {percentage(transcriptionEvents, voiceUploadedEvents)}
-            </p>
+            <p className="mt-1 text-3xl font-bold text-slate-900">{stats.transcriptionRate}</p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">{t.conversionRate}</p>
-            <p className="mt-1 text-3xl font-bold text-slate-900">
-              {percentage(taskCreatedEvents, voiceUploadedEvents)}
-            </p>
+            <p className="mt-1 text-3xl font-bold text-slate-900">{stats.conversionRate}</p>
           </article>
         </section>
 
@@ -151,15 +124,15 @@ export default async function DashboardPage() {
             <div className="mt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2">
                 <span className="text-slate-700">{t.voiceUploaded}</span>
-                <span className="font-semibold text-slate-900">{voiceUploadedEvents}</span>
+                <span className="font-semibold text-slate-900">{stats.voiceUploadedEvents}</span>
               </div>
               <div className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2">
                 <span className="text-slate-700">{t.transcriptionSucceeded}</span>
-                <span className="font-semibold text-slate-900">{transcriptionEvents}</span>
+                <span className="font-semibold text-slate-900">{stats.transcriptionEvents}</span>
               </div>
               <div className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2">
                 <span className="text-slate-700">{t.taskCreated}</span>
-                <span className="font-semibold text-slate-900">{taskCreatedEvents}</span>
+                <span className="font-semibold text-slate-900">{stats.totalVoiceTasks}</span>
               </div>
             </div>
           </article>

@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+﻿import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   answerTelegramCallback,
@@ -9,6 +9,7 @@ import {
   type TelegramUiLanguage,
 } from "@/lib/telegram";
 import { trackEvent } from "@/lib/analytics";
+import { getDashboardStats } from "@/lib/dashboard-stats";
 
 type TelegramChat = {
   id?: number | string;
@@ -60,18 +61,18 @@ const CALLBACK_CANCEL = "task:cancel";
 const text = {
   en: {
     start:
-      "Hello! To connect your account, send: /link 123456\nTo switch language: /lang ru or /lang en\nTo view tasks: /tasks\nTo complete task: /done <task_id>\nTo undo completion: /undo <task_id>\nTo delete task: /delete <task_id>",
+      "Hello! To connect your account, send: /link 123456\nTo switch language: /lang ru or /lang en\nTo view tasks: /tasks\nTo view dashboard: /dashboard\nTo complete task: /done <task_id>\nTo undo completion: /undo <task_id>\nTo delete task: /delete <task_id>",
     unknown:
-      "Unknown command. Use /link 123456, /lang ru|en, /tasks, /done <task_id>, /undo <task_id>, /delete <task_id>.",
+      "Unknown command. Use /link 123456, /lang ru|en, /tasks, /dashboard, /done <task_id>, /undo <task_id>, /delete <task_id>.",
     invalidOrExpired: "Link code is invalid or expired. Generate a new code in app settings.",
     linked:
-      "Telegram linked successfully. You will receive task notifications.\nCommands: /lang ru|en, /tasks, /done <task_id>, /undo <task_id>, /delete <task_id>",
+      "Telegram linked successfully. You will receive task notifications.\nCommands: /lang ru|en, /tasks, /dashboard, /done <task_id>, /undo <task_id>, /delete <task_id>",
     linkFirst:
-      "Link your account first with /link 123456, then use /lang ru|en, /tasks, /done <task_id>, /undo <task_id>, /delete <task_id>.",
+      "Link your account first with /link 123456, then use /lang ru|en, /tasks, /dashboard, /done <task_id>, /undo <task_id>, /delete <task_id>.",
     languageStatus: "Current bot language: EN\nUse /lang ru or /lang en",
     languageChangedToEn: "Bot language changed to EN.",
     languageChangedToRu: "Bot language changed to RU.",
-    tasksHeader: "🗂 *Recent voice tasks*",
+    tasksHeader: "рџ—‚ *Recent voice tasks*",
     tasksEmpty: "No voice-created tasks yet.",
     doneUsage: "Usage: /done <task_id>. Use /tasks to get IDs.",
     doneNotFound: "Task not found for this account.",
@@ -81,14 +82,14 @@ const text = {
     undoUsage: "Usage: /undo <task_id>. Use /tasks to get IDs.",
     undoNotDone: "Task is not completed yet.",
     undoSuccess: "Task moved back to To do.",
-    deleteUsage: "Использование: /delete <task_id>. Смотрите ID через /tasks.",
-    deleteSuccess: "Задача удалена.",
-    btnDone: "✅ Complete",
-    btnUndo: "↩️ Undo",
-    btnDelete: "🗑️ Удалить",
-    btnRefresh: "🔄 Refresh",
-    btnConfirm: "✅ Confirm",
-    btnCancel: "✖️ Cancel",
+    deleteUsage: "Usage: /delete <task_id>. Use /tasks to get IDs.",
+    deleteSuccess: "Task deleted.",
+    btnDone: "вњ… Complete",
+    btnUndo: "в†©пёЏ Undo",
+    btnDelete: "🗑️ Delete",
+    btnRefresh: "рџ”„ Refresh",
+    btnConfirm: "вњ… Confirm",
+    btnCancel: "вњ–пёЏ Cancel",
     callbackNeedLink: "Link account first.",
     callbackTasksRefreshed: "List updated.",
     callbackTaskNotFound: "Task not found.",
@@ -97,78 +98,90 @@ const text = {
     callbackActionCancelled: "Action cancelled.",
     callbackActionDonePrompt: "Confirm completion?",
     callbackActionUndoPrompt: "Confirm undo?",
-    callbackActionDeletePrompt: "Подтвердите удаление.",
+    callbackActionDeletePrompt: "Confirm deletion?",
     callbackCompleted: "Completed.",
     callbackUncompleted: "Moved back to To do.",
-    callbackDeleted: "Удалено.",
+    callbackDeleted: "Deleted.",
     callbackUnknownAction: "Unknown action.",
     callbackError: "Could not process action.",
     confirmDoneText: "Complete this task?",
     confirmUndoText: "Move this task back to To do?",
-    confirmDeleteText: "Удалить эту задачу?",
+    confirmDeleteText: "Delete this task?",
     taskLabel: "Task",
     statusLabel: "Status",
     taskMissingInMessage: "Task details are no longer available.",
     statusTodo: "To do",
     statusInProgress: "In progress",
     statusDone: "Done",
+    dashboardHeader: "📊 *Dashboard*",
+    dashboardTasks: "Total tasks",
+    dashboardVoiceInputs: "Voice inputs",
+    dashboardVoiceTasks: "Voice tasks",
+    dashboardTranscriptionRate: "Transcription rate",
+    dashboardConversionRate: "Conversion rate",
   },
   ru: {
     start:
-      "Привет! Чтобы подключить аккаунт, отправьте: /link 123456\nЧтобы сменить язык: /lang ru или /lang en\nСписок задач: /tasks\nВыполнить задачу: /done <task_id>\nОтменить выполнение: /undo <task_id>",
+      "Привет! Чтобы подключить аккаунт, отправьте: /link 123456\nЧтобы сменить язык: /lang ru или /lang en\nСписок задач: /tasks\nДашборд: /dashboard\nВыполнить задачу: /done <task_id>\nОтменить выполнение: /undo <task_id>\nУдалить задачу: /delete <task_id>",
     unknown:
-      "Неизвестная команда. Используйте /link 123456, /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
+      "Неизвестная команда. Используйте /link 123456, /lang ru|en, /tasks, /dashboard, /done <task_id>, /undo <task_id>, /delete <task_id>.",
     invalidOrExpired:
-      "Код привязки неверный или истек. Сгенерируйте новый код в настройках приложения.",
+      "РљРѕРґ РїСЂРёРІСЏР·РєРё РЅРµРІРµСЂРЅС‹Р№ РёР»Рё РёСЃС‚РµРє. РЎРіРµРЅРµСЂРёСЂСѓР№С‚Рµ РЅРѕРІС‹Р№ РєРѕРґ РІ РЅР°СЃС‚СЂРѕР№РєР°С… РїСЂРёР»РѕР¶РµРЅРёСЏ.",
     linked:
-      "Telegram успешно подключен. Вы будете получать уведомления о задачах.\nКоманды: /lang ru|en, /tasks, /done <task_id>, /undo <task_id>",
+      "Telegram успешно подключен. Вы будете получать уведомления о задачах.\nКоманды: /lang ru|en, /tasks, /dashboard, /done <task_id>, /undo <task_id>, /delete <task_id>",
     linkFirst:
-      "Сначала привяжите аккаунт через /link 123456, затем используйте /lang ru|en, /tasks, /done <task_id>, /undo <task_id>.",
-    languageStatus: "Текущий язык бота: RU\nИспользуйте /lang ru или /lang en",
-    languageChangedToEn: "Язык бота изменен на EN.",
-    languageChangedToRu: "Язык бота изменен на RU.",
-    tasksHeader: "🗂 *Последние голосовые задачи*",
-    tasksEmpty: "Пока нет голосовых задач.",
-    doneUsage: "Использование: /done <task_id>. Смотрите ID через /tasks.",
-    doneNotFound: "Задача для этого аккаунта не найдена.",
+      "Сначала привяжите аккаунт через /link 123456, затем используйте /lang ru|en, /tasks, /dashboard, /done <task_id>, /undo <task_id>, /delete <task_id>.",
+    languageStatus: "РўРµРєСѓС‰РёР№ СЏР·С‹Рє Р±РѕС‚Р°: RU\nРСЃРїРѕР»СЊР·СѓР№С‚Рµ /lang ru РёР»Рё /lang en",
+    languageChangedToEn: "РЇР·С‹Рє Р±РѕС‚Р° РёР·РјРµРЅРµРЅ РЅР° EN.",
+    languageChangedToRu: "РЇР·С‹Рє Р±РѕС‚Р° РёР·РјРµРЅРµРЅ РЅР° RU.",
+    tasksHeader: "рџ—‚ *РџРѕСЃР»РµРґРЅРёРµ РіРѕР»РѕСЃРѕРІС‹Рµ Р·Р°РґР°С‡Рё*",
+    tasksEmpty: "РџРѕРєР° РЅРµС‚ РіРѕР»РѕСЃРѕРІС‹С… Р·Р°РґР°С‡.",
+    doneUsage: "РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ: /done <task_id>. РЎРјРѕС‚СЂРёС‚Рµ ID С‡РµСЂРµР· /tasks.",
+    doneNotFound: "Р—Р°РґР°С‡Р° РґР»СЏ СЌС‚РѕРіРѕ Р°РєРєР°СѓРЅС‚Р° РЅРµ РЅР°Р№РґРµРЅР°.",
     doneAmbiguous:
-      "По этому префиксу найдено несколько задач. Используйте полный task_id из /tasks.",
-    doneAlready: "Задача уже выполнена.",
-    doneSuccess: "Задача отмечена как выполненная.",
-    undoUsage: "Использование: /undo <task_id>. Смотрите ID через /tasks.",
-    undoNotDone: "Задача и так не выполнена.",
-    undoSuccess: "Задача возвращена в статус к выполнению.",
-    deleteUsage: "Usage: /delete <task_id>. Use /tasks to get IDs.",
-    deleteSuccess: "Task deleted.",
-    btnDone: "✅ Выполнить",
-    btnUndo: "↩️ Отменить",
-    btnDelete: "Delete",
-    btnRefresh: "🔄 Обновить",
-    btnConfirm: "✅ Подтвердить",
-    btnCancel: "✖️ Отмена",
-    callbackNeedLink: "Сначала привяжите аккаунт.",
-    callbackTasksRefreshed: "Список обновлен.",
-    callbackTaskNotFound: "Задача не найдена.",
-    callbackAlreadyDone: "Задача уже выполнена.",
-    callbackNotDone: "Задача еще не выполнена.",
-    callbackActionCancelled: "Действие отменено.",
-    callbackActionDonePrompt: "Подтвердите выполнение.",
-    callbackActionUndoPrompt: "Подтвердите отмену выполнения.",
-    callbackActionDeletePrompt: "Confirm deletion?",
-    callbackCompleted: "Выполнено.",
-    callbackUncompleted: "Возвращено в «к выполнению».",
-    callbackDeleted: "Deleted.",
-    callbackUnknownAction: "Неизвестное действие.",
-    callbackError: "Не удалось обработать действие.",
-    confirmDoneText: "Выполнить эту задачу?",
-    confirmUndoText: "Вернуть задачу в статус «к выполнению»?",
-    confirmDeleteText: "Delete this task?",
-    taskLabel: "Задача",
-    statusLabel: "Статус",
-    taskMissingInMessage: "Данные задачи больше недоступны.",
-    statusTodo: "К выполнению",
-    statusInProgress: "В процессе",
-    statusDone: "Выполнено",
+      "РџРѕ СЌС‚РѕРјСѓ РїСЂРµС„РёРєСЃСѓ РЅР°Р№РґРµРЅРѕ РЅРµСЃРєРѕР»СЊРєРѕ Р·Р°РґР°С‡. РСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРѕР»РЅС‹Р№ task_id РёР· /tasks.",
+    doneAlready: "Р—Р°РґР°С‡Р° СѓР¶Рµ РІС‹РїРѕР»РЅРµРЅР°.",
+    doneSuccess: "Р—Р°РґР°С‡Р° РѕС‚РјРµС‡РµРЅР° РєР°Рє РІС‹РїРѕР»РЅРµРЅРЅР°СЏ.",
+    undoUsage: "РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ: /undo <task_id>. РЎРјРѕС‚СЂРёС‚Рµ ID С‡РµСЂРµР· /tasks.",
+    undoNotDone: "Р—Р°РґР°С‡Р° Рё С‚Р°Рє РЅРµ РІС‹РїРѕР»РЅРµРЅР°.",
+    undoSuccess: "Р—Р°РґР°С‡Р° РІРѕР·РІСЂР°С‰РµРЅР° РІ СЃС‚Р°С‚СѓСЃ Рє РІС‹РїРѕР»РЅРµРЅРёСЋ.",
+    deleteUsage: "Использование: /delete <task_id>. Смотрите ID через /tasks.",
+    deleteSuccess: "Задача удалена.",
+    btnDone: "вњ… Р’С‹РїРѕР»РЅРёС‚СЊ",
+    btnUndo: "в†©пёЏ РћС‚РјРµРЅРёС‚СЊ",
+    btnDelete: "🗑️ Удалить",
+    btnRefresh: "рџ”„ РћР±РЅРѕРІРёС‚СЊ",
+    btnConfirm: "вњ… РџРѕРґС‚РІРµСЂРґРёС‚СЊ",
+    btnCancel: "вњ–пёЏ РћС‚РјРµРЅР°",
+    callbackNeedLink: "РЎРЅР°С‡Р°Р»Р° РїСЂРёРІСЏР¶РёС‚Рµ Р°РєРєР°СѓРЅС‚.",
+    callbackTasksRefreshed: "РЎРїРёСЃРѕРє РѕР±РЅРѕРІР»РµРЅ.",
+    callbackTaskNotFound: "Р—Р°РґР°С‡Р° РЅРµ РЅР°Р№РґРµРЅР°.",
+    callbackAlreadyDone: "Р—Р°РґР°С‡Р° СѓР¶Рµ РІС‹РїРѕР»РЅРµРЅР°.",
+    callbackNotDone: "Р—Р°РґР°С‡Р° РµС‰Рµ РЅРµ РІС‹РїРѕР»РЅРµРЅР°.",
+    callbackActionCancelled: "Р”РµР№СЃС‚РІРёРµ РѕС‚РјРµРЅРµРЅРѕ.",
+    callbackActionDonePrompt: "РџРѕРґС‚РІРµСЂРґРёС‚Рµ РІС‹РїРѕР»РЅРµРЅРёРµ.",
+    callbackActionUndoPrompt: "РџРѕРґС‚РІРµСЂРґРёС‚Рµ РѕС‚РјРµРЅСѓ РІС‹РїРѕР»РЅРµРЅРёСЏ.",
+    callbackActionDeletePrompt: "Подтвердите удаление.",
+    callbackCompleted: "Р’С‹РїРѕР»РЅРµРЅРѕ.",
+    callbackUncompleted: "Р’РѕР·РІСЂР°С‰РµРЅРѕ РІ В«Рє РІС‹РїРѕР»РЅРµРЅРёСЋВ».",
+    callbackDeleted: "Удалено.",
+    callbackUnknownAction: "РќРµРёР·РІРµСЃС‚РЅРѕРµ РґРµР№СЃС‚РІРёРµ.",
+    callbackError: "РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±СЂР°Р±РѕС‚Р°С‚СЊ РґРµР№СЃС‚РІРёРµ.",
+    confirmDoneText: "Р’С‹РїРѕР»РЅРёС‚СЊ СЌС‚Сѓ Р·Р°РґР°С‡Сѓ?",
+    confirmUndoText: "Р’РµСЂРЅСѓС‚СЊ Р·Р°РґР°С‡Сѓ РІ СЃС‚Р°С‚СѓСЃ В«Рє РІС‹РїРѕР»РЅРµРЅРёСЋВ»?",
+    confirmDeleteText: "Удалить эту задачу?",
+    taskLabel: "Р—Р°РґР°С‡Р°",
+    statusLabel: "РЎС‚Р°С‚СѓСЃ",
+    taskMissingInMessage: "Р”Р°РЅРЅС‹Рµ Р·Р°РґР°С‡Рё Р±РѕР»СЊС€Рµ РЅРµРґРѕСЃС‚СѓРїРЅС‹.",
+    statusTodo: "Рљ РІС‹РїРѕР»РЅРµРЅРёСЋ",
+    statusInProgress: "Р’ РїСЂРѕС†РµСЃСЃРµ",
+    statusDone: "Р’С‹РїРѕР»РЅРµРЅРѕ",
+    dashboardHeader: "📊 *Дашборд*",
+    dashboardTasks: "Р’СЃРµРіРѕ Р·Р°РґР°С‡",
+    dashboardVoiceInputs: "Р“РѕР»РѕСЃРѕРІС‹С… РІРІРѕРґРѕРІ",
+    dashboardVoiceTasks: "Р“РѕР»РѕСЃРѕРІС‹С… Р·Р°РґР°С‡",
+    dashboardTranscriptionRate: "РЈСЃРїРµС€РЅРѕСЃС‚СЊ С‚СЂР°РЅСЃРєСЂРёРїС†РёРё",
+    dashboardConversionRate: "РљРѕРЅРІРµСЂСЃРёСЏ РІ Р·Р°РґР°С‡Сѓ",
   },
 } as const;
 
@@ -289,7 +302,7 @@ function buildTasksText(tasks: VoiceTaskLite[], language: TelegramUiLanguage): s
   const lines = tasks.map((task, index) => {
     const title = escapeMarkdown(task.title).slice(0, 80);
     const status = formatTaskStatus(task.status, language);
-    return `${index + 1}. ${title}\n\`${shortTaskId(task.id)}\` • ${status}`;
+    return `${index + 1}. ${title}\n\`${shortTaskId(task.id)}\` вЂў ${status}`;
   });
 
   return `${t.tasksHeader}\n\n${lines.join("\n\n")}`;
@@ -330,7 +343,7 @@ function buildConfirmText(task: VoiceTaskLite, action: TaskAction, language: Tel
         : t.confirmDeleteText;
   const status = formatTaskStatus(task.status, language);
   const title = escapeMarkdown(task.title).slice(0, 80);
-  return `⚠️ *${prompt}*\n\n${t.taskLabel}: ${title}\nID: \`${shortTaskId(task.id)}\`\n${t.statusLabel}: ${status}`;
+  return `вљ пёЏ *${prompt}*\n\n${t.taskLabel}: ${title}\nID: \`${shortTaskId(task.id)}\`\n${t.statusLabel}: ${status}`;
 }
 
 function buildConfirmKeyboard(taskId: string, action: TaskAction, language: TelegramUiLanguage) {
@@ -364,6 +377,26 @@ async function handleTasksCommand(chatId: string, userId: string, language: Tele
     parseMode: "Markdown",
     replyMarkup: buildTasksKeyboard(tasks, language),
   });
+}
+
+async function handleDashboardCommand(chatId: string, userId: string, language: TelegramUiLanguage) {
+  const t = text[language];
+  const stats = await getDashboardStats(userId);
+  const lines = [
+    t.dashboardHeader,
+    "",
+    `${t.dashboardTasks}: *${stats.totalTasks}*`,
+    `${t.dashboardVoiceInputs}: *${stats.totalVoiceInputs}*`,
+    `${t.dashboardVoiceTasks}: *${stats.totalVoiceTasks}*`,
+    `${t.dashboardTranscriptionRate}: *${stats.transcriptionRate}*`,
+    `${t.dashboardConversionRate}: *${stats.conversionRate}*`,
+    "",
+    `${t.statusTodo}: *${stats.statusCounts.todo}*`,
+    `${t.statusInProgress}: *${stats.statusCounts.in_progress}*`,
+    `${t.statusDone}: *${stats.statusCounts.done}*`,
+  ];
+
+  await sendTelegramMessage(chatId, lines.join("\n"), { parseMode: "Markdown" });
 }
 
 async function handleDoneCommand(
@@ -685,6 +718,15 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
       return { handled: true as const };
     }
     await handleTasksCommand(chatId, existingConnection.userId, currentLanguage);
+    return { handled: true as const };
+  }
+
+  if (commandText.match(/^\/dashboard(?:@\w+)?$/i)) {
+    if (!existingConnection) {
+      await sendTelegramMessage(chatId, t.linkFirst);
+      return { handled: true as const };
+    }
+    await handleDashboardCommand(chatId, existingConnection.userId, currentLanguage);
     return { handled: true as const };
   }
 
