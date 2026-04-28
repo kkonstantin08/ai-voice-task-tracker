@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskCategory {
+  work
+  personal
+  study
+  health
+  finance
+  other
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  done
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  passwordHash       String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  sessions           Session[]
+  voiceInputs        VoiceInput[]
+  tasks              Task[]
+  telegramConnection TelegramConnection?
+  telegramLinkCodes  TelegramLinkCode[]
+  analyticsEvents    AnalyticsEvent[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model VoiceInput {
+  id            String   @id @default(cuid())
+  userId        String
+  transcript    String
+  audioFileName String
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task          Task?
+
+  @@index([userId])
+  @@map("voice_inputs")
+}
+
+model Task {
+  id               String       @id @default(cuid())
+  userId           String
+  voiceInputId     String?      @unique
+  title            String
+  description      String
+  category         TaskCategory
+  priority         TaskPriority
+  status           TaskStatus   @default(todo)
+  dueDate          DateTime?
+  sourceTranscript String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voiceInput       VoiceInput?  @relation(fields: [voiceInputId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([category])
+  @@map("tasks")
+}
+
+model TelegramConnection {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  chatId           String
+  telegramUsername String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@map("telegram_connections")
+}
+
+model TelegramLinkCode {
+  id        String    @id @default(cuid())
+  userId    String
+  code      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([code])
+  @@index([expiresAt])
+  @@map("telegram_link_codes")
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  eventName String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([eventName])
+  @@map("analytics_events")
+}

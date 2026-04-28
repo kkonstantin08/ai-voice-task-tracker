@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai-voice-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ai_voice_task_tracker
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_voice_task_tracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-voice-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_URL: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/ai_voice_task_tracker
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_BASE_URL: ${MISTRAL_BASE_URL:-https://api.mistral.ai}
+      MISTRAL_CHAT_MODEL: ${MISTRAL_CHAT_MODEL:-mistral-small-latest}
+      MISTRAL_TRANSCRIPTION_MODEL: ${MISTRAL_TRANSCRIPTION_MODEL:-voxtral-mini-latest}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+    ports:
+      - "3000:3000"
+
+  telegram-poller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-voice-telegram-poller
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/ai_voice_task_tracker
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_POLL_TIMEOUT_SECONDS: ${TELEGRAM_POLL_TIMEOUT_SECONDS:-50}
+      TELEGRAM_POLL_RETRY_DELAY_MS: ${TELEGRAM_POLL_RETRY_DELAY_MS:-3000}
+      TELEGRAM_POLLING_DELETE_WEBHOOK: ${TELEGRAM_POLLING_DELETE_WEBHOOK:-true}
+      TELEGRAM_POLLING_DROP_PENDING_UPDATES: ${TELEGRAM_POLLING_DROP_PENDING_UPDATES:-false}
+    command: ["npm", "run", "telegram:poll"]
+
+volumes:
+  postgres_data:
