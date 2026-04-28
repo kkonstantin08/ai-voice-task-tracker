@@ -13,7 +13,7 @@ export default async function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_hsl(220_30%_97%)_0%,_hsl(0_0%_100%)_45%,_hsl(210_30%_96%)_100%)]">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_hsl(220_30%_97%)_0%,_hsl(0_0%_100%)_45%,_hsl(210_30%_96%)_100%)] dark:bg-[radial-gradient(circle_at_top,_hsl(220_24%_16%)_0%,_hsl(222_24%_12%)_45%,_hsl(224_26%_8%)_100%)]">
       <div className="mx-auto flex w-full max-w-5xl justify-end gap-2 px-4 pt-4 sm:px-6 sm:pt-6">
         <LanguageToggle locale={locale} size="compact" />
         <ThemeToggle size="compact" />

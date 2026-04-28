@@ -49,7 +49,7 @@ export default async function Home() {
   const t = labels[locale];
 
   return (
-    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_hsl(220_30%_97%)_0%,_hsl(0_0%_100%)_45%,_hsl(210_30%_96%)_100%)]">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_hsl(220_30%_97%)_0%,_hsl(0_0%_100%)_45%,_hsl(210_30%_96%)_100%)] dark:bg-[radial-gradient(circle_at_top,_hsl(220_24%_16%)_0%,_hsl(222_24%_12%)_45%,_hsl(224_26%_8%)_100%)]">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 pt-4 sm:px-6 sm:pt-6">
         <span className="text-sm font-medium text-muted-foreground">AI Voice Task Tracker</span>
         <div className="flex items-center gap-2">
