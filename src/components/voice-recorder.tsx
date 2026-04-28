@@ -13,7 +13,7 @@ type ProcessedTask = {
   description: string;
   category: string;
   priority: string;
-  status: string;
+  status: "todo" | "in_progress" | "done";
   dueDate: string | null;
   createdAt: string;
 };
@@ -23,6 +23,16 @@ type VoiceApiResponse = {
   warning?: string;
   transcript?: string;
   task?: ProcessedTask | null;
+};
+
+type VoiceTasksResponse = {
+  error?: string;
+  tasks?: ProcessedTask[];
+};
+
+type CompleteTaskResponse = {
+  error?: string;
+  task?: ProcessedTask;
 };
 
 const preferredMimeTypes = [
@@ -40,6 +50,8 @@ const labels = {
     recordFirst: "Record audio first.",
     processFailed: "Failed to process voice note.",
     networkError: "Network error while processing audio.",
+    loadTasksFailed: "Failed to load your voice tasks.",
+    completeTaskFailed: "Failed to complete task.",
     title: "Voice Input",
     subtitle:
       "Record a voice note, upload it, and we will transcribe and extract a structured task.",
@@ -51,6 +63,18 @@ const labels = {
     noTranscript: "No transcript yet.",
     extractedTaskJson: "Extracted Task JSON",
     noTask: "No task extracted yet.",
+    voiceTasks: "Voice Tasks",
+    refresh: "Refresh",
+    loadingTasks: "Loading tasks...",
+    noVoiceTasks: "No voice-created tasks yet.",
+    due: "Due",
+    created: "Created",
+    statusTodo: "To do",
+    statusInProgress: "In progress",
+    statusDone: "Done",
+    markDone: "Mark done",
+    completing: "Completing...",
+    completed: "Completed",
   },
   ru: {
     browserUnsupported: "Ваш браузер не поддерживает запись аудио.",
@@ -58,6 +82,8 @@ const labels = {
     recordFirst: "Сначала запишите аудио.",
     processFailed: "Не удалось обработать голосовую заметку.",
     networkError: "Сетевая ошибка во время обработки аудио.",
+    loadTasksFailed: "Не удалось загрузить голосовые задачи.",
+    completeTaskFailed: "Не удалось отметить задачу выполненной.",
     title: "Голосовой ввод",
     subtitle: "Запишите заметку, загрузите ее, и мы расшифруем речь и извлечем структуру задачи.",
     startRecording: "Начать запись",
@@ -68,6 +94,18 @@ const labels = {
     noTranscript: "Транскрипта пока нет.",
     extractedTaskJson: "Извлеченная задача (JSON)",
     noTask: "Задача пока не извлечена.",
+    voiceTasks: "Голосовые задачи",
+    refresh: "Обновить",
+    loadingTasks: "Загрузка задач...",
+    noVoiceTasks: "Пока нет задач, созданных голосом.",
+    due: "Срок",
+    created: "Создано",
+    statusTodo: "К выполнению",
+    statusInProgress: "В процессе",
+    statusDone: "Выполнено",
+    markDone: "Выполнить",
+    completing: "Выполняем...",
+    completed: "Выполнено",
   },
 } as const;
 
@@ -77,6 +115,10 @@ function extensionFromMimeType(mimeType: string): string {
   if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return ".mp3";
   if (mimeType.includes("wav")) return ".wav";
   return ".webm";
+}
+
+function sortTasksByCreatedAt(tasks: ProcessedTask[]): ProcessedTask[] {
+  return [...tasks].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 }
 
 export function VoiceRecorder({ locale }: VoiceRecorderProps) {
@@ -90,9 +132,13 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
   const [recordedMimeType, setRecordedMimeType] = useState("audio/webm");
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [tasksError, setTasksError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>("");
   const [task, setTask] = useState<ProcessedTask | null>(null);
+  const [voiceTasks, setVoiceTasks] = useState<ProcessedTask[]>([]);
   const [isPending, setIsPending] = useState(false);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
 
   const deferredTranscript = useDeferredValue(transcript);
 
@@ -106,6 +152,39 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    void fetchVoiceTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function statusLabel(status: ProcessedTask["status"]): string {
+    if (status === "done") return t.statusDone;
+    if (status === "in_progress") return t.statusInProgress;
+    return t.statusTodo;
+  }
+
+  async function fetchVoiceTasks() {
+    setLoadingTasks(true);
+    setTasksError(null);
+    try {
+      const response = await fetch("/api/tasks/voice", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = (await response.json()) as VoiceTasksResponse;
+      if (!response.ok) {
+        setTasksError(data.error ?? t.loadTasksFailed);
+        return;
+      }
+      setVoiceTasks(sortTasksByCreatedAt(data.tasks ?? []));
+    } catch {
+      setTasksError(t.loadTasksFailed);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }
 
   async function startRecording() {
     setError(null);
@@ -200,10 +279,49 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
       setTranscript(data.transcript ?? "");
       setTask(data.task ?? null);
       setWarning(data.warning ?? null);
+
+      if (data.task) {
+        setVoiceTasks((prev) => sortTasksByCreatedAt([data.task as ProcessedTask, ...prev]));
+      }
     } catch {
       setError(t.networkError);
     } finally {
       setIsPending(false);
+    }
+  }
+
+  async function completeTask(taskId: string) {
+    if (updatingTaskId) {
+      return;
+    }
+
+    setUpdatingTaskId(taskId);
+    setTasksError(null);
+    try {
+      const response = await fetch("/api/tasks/voice/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ taskId }),
+      });
+      const data = (await response.json()) as CompleteTaskResponse;
+      if (!response.ok || !data.task) {
+        setTasksError(data.error ?? t.completeTaskFailed);
+        return;
+      }
+
+      setVoiceTasks((prev) =>
+        sortTasksByCreatedAt(prev.map((item) => (item.id === taskId ? data.task! : item))),
+      );
+      if (task?.id === taskId) {
+        setTask(data.task);
+      }
+    } catch {
+      setTasksError(t.completeTaskFailed);
+    } finally {
+      setUpdatingTaskId(null);
     }
   }
 
@@ -267,6 +385,63 @@ export function VoiceRecorder({ locale }: VoiceRecorderProps) {
             {task ? JSON.stringify(task, null, 2) : t.noTask}
           </pre>
         </div>
+      </div>
+
+      <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">{t.voiceTasks}</h3>
+          <button
+            type="button"
+            onClick={() => void fetchVoiceTasks()}
+            disabled={loadingTasks}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {t.refresh}
+          </button>
+        </div>
+
+        {tasksError ? (
+          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {tasksError}
+          </div>
+        ) : null}
+
+        {loadingTasks ? (
+          <p className="mt-3 text-sm text-slate-600">{t.loadingTasks}</p>
+        ) : voiceTasks.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600">{t.noVoiceTasks}</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {voiceTasks.map((item) => {
+              const isDone = item.status === "done";
+              const isUpdating = updatingTaskId === item.id;
+              return (
+                <li
+                  key={item.id}
+                  className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {t.created}: {new Date(item.createdAt).toLocaleString()} • {t.due}:{" "}
+                      {item.dueDate ? new Date(item.dueDate).toLocaleString() : "-"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{statusLabel(item.status)}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void completeTask(item.id)}
+                    disabled={isDone || isUpdating || Boolean(updatingTaskId)}
+                    className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isDone ? t.completed : isUpdating ? t.completing : t.markDone}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </section>
   );

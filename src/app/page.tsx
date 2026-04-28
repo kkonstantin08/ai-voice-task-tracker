@@ -10,9 +10,11 @@ const labels = {
     register: "Register",
     login: "Login",
     voiceToTask: "Voice to Task",
-    voiceToTaskDescription: "Record audio in-browser and convert speech into structured tasks.",
+    voiceToTaskDescription:
+      "Record audio in-browser and convert speech into structured tasks.",
     aiExtraction: "AI Extraction",
-    aiExtractionDescription: "Use Mistral transcription + chat models with strict JSON validation.",
+    aiExtractionDescription:
+      "Use Mistral transcription + chat models with strict JSON validation.",
     telegramAlerts: "Telegram Alerts",
     telegramAlertsDescription:
       "Link Telegram via one-time code and receive task creation notifications.",
@@ -20,15 +22,18 @@ const labels = {
   ru: {
     badge: "Курсовой MVP",
     description:
-      "Записывайте голосовые заметки, расшифровывайте их через Mistral, получайте структурированные задачи и мгновенные уведомления в Telegram.",
+      "Записывайте голосовые заметки, расшифровывайте их через LLM, получайте структурированные задачи и мгновенные уведомления в Telegram.",
     register: "Регистрация",
     login: "Войти",
     voiceToTask: "Голос в задачу",
-    voiceToTaskDescription: "Запишите аудио в браузере и преобразуйте речь в структурированные задачи.",
+    voiceToTaskDescription:
+      "Запишите аудио в браузере и преобразуйте речь в структурированные задачи.",
     aiExtraction: "AI-извлечение",
-    aiExtractionDescription: "Используйте Mistral для транскрипции и извлечения JSON-структуры.",
+    aiExtractionDescription:
+      "Используйте Mistral для транскрипции и извлечения JSON-структуры.",
     telegramAlerts: "Уведомления Telegram",
-    telegramAlertsDescription: "Привяжите Telegram кодом и получайте уведомления о новых задачах.",
+    telegramAlertsDescription:
+      "Привяжите Telegram кодом и получайте уведомления о новых задачах.",
   },
 } as const;
 
