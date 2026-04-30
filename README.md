@@ -1,402 +1,259 @@
-# AI Voice Task Tracker (режим Telegram Long Polling)
+﻿# AI Voice Task Tracker
 
-Подробная инструкция для новичка: от первого запуска до проверки аналитики.
+Веб-приложение и Telegram-бот для управления задачами, созданными голосом.
 
-В этом проекте Telegram подключается через **long polling** (процесс `telegram-poller`), поэтому публичный webhook для локальной разработки не нужен.
+Пользователь записывает голос в браузере, сервис расшифровывает речь через Mistral, извлекает структуру задачи и сохраняет ее в PostgreSQL. Дальше задачами можно управлять как в веб-интерфейсе, так и через Telegram.
 
----
+## Оглавление
 
-## Что уже реализовано
+- [Возможности](#возможности)
+- [Технологический стек](#технологический-стек)
+- [Архитектура](#архитектура)
+- [Требования](#требования)
+- [Быстрый старт через Docker](#быстрый-старт-через-docker)
+- [Локальный запуск без Docker для app/poller](#локальный-запуск-без-docker-для-apppoller)
+- [Переменные окружения](#переменные-окружения)
+- [Настройка Telegram-бота](#настройка-telegram-бота)
+- [Команды Telegram-бота](#команды-telegram-бота)
+- [Скрипты проекта](#скрипты-проекта)
+- [API обзор](#api-обзор)
+- [Проверка качества](#проверка-качества)
+- [Troubleshooting](#troubleshooting)
+- [Структура проекта](#структура-проекта)
 
-- Next.js App Router + TypeScript + Tailwind
-- PostgreSQL + Prisma
-- Регистрация/логин (bcrypt + HTTP-only cookie-сессии)
-- Запись голоса в браузере (`MediaRecorder`)
-- Транскрибация через Mistral Audio API
-- Извлечение JSON-задачи через Mistral Chat API + Zod валидация
-- Telegram linking через `/link 123456`
-- Уведомления в Telegram при создании задач
-- Dashboard и funnel-аналитика
-- Docker Compose с отдельным сервисом `telegram-poller`
+## Возможности
 
----
+- Регистрация и логин с HTTP-only сессиями.
+- Создание задач из голосового ввода в браузере.
+- Транскрибация аудио через Mistral Audio API.
+- Извлечение структуры задачи из текста через Mistral Chat API и валидация Zod.
+- Управление задачами на сайте: выполнить, отменить выполнение, удалить.
+- Управление задачами в Telegram: текстовые команды и inline-кнопки с подтверждением действий.
+- Дашборд со статистикой и конверсией.
+- Локализация интерфейса (RU/EN) для сайта и бота.
 
-## 0) Требования
+## Технологический стек
 
-1. Docker Desktop (Windows/Mac) или Docker Engine + Compose Plugin (Linux)
-2. Git
+- Frontend/Backend: Next.js 16 (App Router), React 19, TypeScript.
+- UI: Tailwind CSS 4, shadcn/ui, lucide-react.
+- База данных: PostgreSQL 16.
+- ORM: Prisma.
+- Telegram: Bot API (long polling + webhook handler).
+- Инфраструктура: Docker Compose.
 
-Проверка:
+## Архитектура
 
-```bash
-docker --version
-docker compose version
-git --version
-```
+Сервисы в `docker-compose.yml`:
 
----
+- `db`: PostgreSQL.
+- `app`: Next.js приложение (UI + API).
+- `telegram-poller`: отдельный воркер long polling.
 
-## 1) Как создать Mistral API Key
+Поток обработки голоса:
 
-1. Откройте [https://console.mistral.ai/](https://console.mistral.ai/).
-2. Войдите в аккаунт.
-3. Перейдите в раздел API Keys.
-4. Нажмите `Create new key`.
-5. Скопируйте ключ.
+1. Пользователь записывает аудио на странице `/app`.
+2. Файл отправляется в `/api/voice/process`.
+3. Приложение делает транскрибацию и извлечение задачи.
+4. Создаются записи `voice_inputs` и `tasks`.
+5. При привязанном Telegram пользователю отправляется уведомление.
 
-Ключ вставляется в файл `.env` в переменную:
+## Требования
 
-```env
-MISTRAL_API_KEY=...
-```
+- Docker Desktop (или Docker Engine + Compose plugin).
+- Node.js 20+ (если запускаете локально без контейнера).
+- npm 10+.
 
----
+## Быстрый старт через Docker
 
-## 2) Как создать Telegram-бота в BotFather
-
-1. В Telegram найдите `@BotFather`.
-2. Отправьте:
-
-```text
-/newbot
-```
-
-3. Задайте имя бота.
-4. Задайте username (должен заканчиваться на `bot`).
-5. BotFather вернет токен вида:
-
-```text
-1234567890:AA...
-```
-
-6. Сохраните токен — это `TELEGRAM_BOT_TOKEN`.
-
----
-
-## 3) Как создать `.env` из `.env.example`
-
-В корне проекта:
-
-### Windows PowerShell
-
-```powershell
-cd "C:\Users\user\Desktop\Заказы\Эля"
-Copy-Item .env.example .env
-```
-
-### Linux/macOS/Git Bash
+### 1) Клонирование и подготовка `.env`
 
 ```bash
+git clone <URL_ВАШЕГО_РЕПО> ai-voice-task-tracker
+cd ai-voice-task-tracker
 cp .env.example .env
 ```
 
-Откройте `.env` и заполните минимум:
+Для Windows PowerShell:
 
-```env
-APP_URL=http://localhost:3000
-NODE_ENV=development
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ai_voice_task_tracker
-
-MISTRAL_API_KEY=ваш_ключ_mistral
-MISTRAL_BASE_URL=https://api.mistral.ai
-MISTRAL_CHAT_MODEL=mistral-small-latest
-MISTRAL_TRANSCRIPTION_MODEL=voxtral-mini-latest
-
-TELEGRAM_BOT_TOKEN=ваш_токен_бота
-TELEGRAM_POLL_TIMEOUT_SECONDS=50
-TELEGRAM_POLL_RETRY_DELAY_MS=3000
-TELEGRAM_POLLING_DELETE_WEBHOOK=true
-TELEGRAM_POLLING_DROP_PENDING_UPDATES=false
+```powershell
+Copy-Item .env.example .env
 ```
 
-Примечание:
-- `TELEGRAM_WEBHOOK_SECRET` можно оставить, но в long polling он не нужен.
+### 2) Заполните обязательные переменные
 
----
+Минимум нужно указать:
 
-## 4) Как запустить `docker compose up --build`
+- `MISTRAL_API_KEY`
+- `TELEGRAM_BOT_TOKEN`
 
-Из корня проекта:
+Остальные значения можно оставить как в `.env.example`.
+
+### 3) Запуск
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
-Поднимутся сервисы:
-- `db` (PostgreSQL)
-- `app` (Next.js)
-- `telegram-poller` (long polling worker)
-
-Проверка:
+### 4) Проверка
 
 ```bash
 docker compose ps
-```
-
-Логи:
-
-```bash
 docker compose logs -f app
 docker compose logs -f telegram-poller
-docker compose logs -f db
 ```
 
----
+### 5) Открыть приложение
 
-## 5) Как запускать Prisma migrations
+- [http://localhost:3000](http://localhost:3000)
 
-Проект уже применяет миграции при старте `app`, но вручную:
+### Полный сброс и запуск с нуля
+
+Если нужно полностью пересоздать БД и контейнеры:
 
 ```bash
-docker compose exec app npx prisma migrate deploy
-docker compose exec app npx prisma migrate status
+docker compose down -v --remove-orphans
+docker compose up --build -d
 ```
 
-Проверка таблиц:
+## Локальный запуск без Docker для app/poller
+
+Рекомендуемый вариант: БД в Docker, app/poller локально.
+
+1. Поднимите только БД:
 
 ```bash
-docker compose exec db psql -U postgres -d ai_voice_task_tracker -c "\dt"
+docker compose up -d db
 ```
 
-Ожидаемые таблицы:
-- `users`
-- `sessions`
-- `voice_inputs`
-- `tasks`
-- `telegram_connections`
-- `telegram_link_codes`
-- `analytics_events`
-
----
-
-## 6) Как открыть приложение в браузере
-
-Откройте:
-
-[http://localhost:3000](http://localhost:3000)
-
-Основные страницы:
-- `/`
-- `/register`
-- `/login`
-- `/app`
-- `/settings`
-- `/dashboard`
-
----
-
-## 7) Как протестировать регистрацию
-
-1. Откройте [http://localhost:3000/register](http://localhost:3000/register)
-2. Введите email + password (минимум 8 символов)
-3. Нажмите `Register`
-4. После успеха откроется `/app`
-
-Проверка в БД:
+2. Установите зависимости:
 
 ```bash
-echo 'select id,email,"createdAt" from users order by "createdAt" desc limit 5;' | docker compose exec -T db psql -U postgres -d ai_voice_task_tracker
+npm ci
 ```
 
----
-
-## 8) Как протестировать голосовой ввод
-
-1. Перейдите на `/app`
-2. Нажмите `Start Recording`
-3. Разрешите микрофон
-4. Скажите задачу голосом
-5. Нажмите `Stop Recording`
-6. Нажмите `Upload & Process`
-
-Ожидаемый результат:
-- Появился `Transcript`
-- Появился `Extracted Task JSON`
-
-Если ошибка:
+3. Примените миграции:
 
 ```bash
-docker compose logs -f app
+npx prisma migrate deploy
 ```
 
----
-
-## 9) Как протестировать Mistral LLM processing
-
-После шага 8 проверьте:
-- в UI есть транскрипт
-- в JSON есть поля `title`, `description`, `category`, `priority`, `status`, `dueDate`
-
-Проверка `tasks`:
+4. Запустите веб-приложение:
 
 ```bash
-echo 'select id,title,category,priority,status,"dueDate","createdAt" from tasks order by "createdAt" desc limit 10;' | docker compose exec -T db psql -U postgres -d ai_voice_task_tracker
+npm run dev
 ```
 
-Проверка `voice_inputs`:
+5. В отдельном терминале запустите Telegram poller:
 
 ```bash
-echo 'select id,transcript,"audioFileName","createdAt" from voice_inputs order by "createdAt" desc limit 10;' | docker compose exec -T db psql -U postgres -d ai_voice_task_tracker
+npm run telegram:poll
 ```
 
----
+## Переменные окружения
 
-## 10) Как подключить Telegram (через long polling)
+Файл: `.env` (образец: `.env.example`).
 
-1. Убедитесь, что `telegram-poller` запущен:
+| Переменная                              | Обязательна | Описание                                                   |
+| --------------------------------------- | ----------- | ---------------------------------------------------------- |
+| `APP_URL`                               | да          | Базовый URL приложения (обычно `http://localhost:3000`).   |
+| `NODE_ENV`                              | да          | Режим запуска (`development`/`production`).                |
+| `DATABASE_URL`                          | да          | Строка подключения PostgreSQL.                             |
+| `MISTRAL_API_KEY`                       | да          | Ключ API Mistral.                                          |
+| `MISTRAL_BASE_URL`                      | нет         | Базовый URL Mistral API.                                   |
+| `MISTRAL_CHAT_MODEL`                    | нет         | Модель для извлечения структуры задачи.                    |
+| `MISTRAL_TRANSCRIPTION_MODEL`           | нет         | Модель для транскрибации аудио.                            |
+| `TELEGRAM_BOT_TOKEN`                    | да          | Токен бота от BotFather.                                   |
+| `TELEGRAM_WEBHOOK_SECRET`               | нет         | Секрет для webhook-режима. Для long polling не обязателен. |
+| `TELEGRAM_POLL_TIMEOUT_SECONDS`         | нет         | Таймаут long polling в секундах.                           |
+| `TELEGRAM_POLL_RETRY_DELAY_MS`          | нет         | Пауза перед повтором при ошибке poller.                    |
+| `TELEGRAM_POLLING_DELETE_WEBHOOK`       | нет         | Удалять webhook при старте poller (`true/false`).          |
+| `TELEGRAM_POLLING_DROP_PENDING_UPDATES` | нет         | Сбрасывать отложенные апдейты (`true/false`).              |
 
-```bash
-docker compose ps
-docker compose logs -f telegram-poller
-```
+## Настройка Telegram-бота
 
-2. Откройте `/settings`
-3. Нажмите `Generate Linking Code`
-4. Возьмите код, например `123456`
-5. В чате с ботом отправьте:
+1. Создайте бота через `@BotFather` (`/newbot`).
+2. Сохраните токен и добавьте его в `TELEGRAM_BOT_TOKEN`.
+3. Запустите проект.
+4. В приложении откройте `/settings` и сгенерируйте linking code.
+5. Отправьте боту команду:
 
 ```text
 /link 123456
 ```
 
-6. Бот должен ответить подтверждением
-7. В `/settings` статус станет `Telegram is connected`
+6. После подтверждения бот привязывается к вашему аккаунту.
 
-Проверка в БД:
+## Команды Telegram-бота
 
-```bash
-echo 'select id,"userId","chatId","telegramUsername","createdAt" from telegram_connections order by "createdAt" desc limit 5;' | docker compose exec -T db psql -U postgres -d ai_voice_task_tracker
-```
+- `/start` — приветствие и справка.
+- `/link <code>` — привязка Telegram к аккаунту.
+- `/lang ru` или `/lang en` — язык интерфейса бота.
+- `/tasks` — последние голосовые задачи + inline-кнопки действий.
+- `/dashboard` — краткая статистика.
+- `/done <task_id>` — отметить задачу выполненной.
+- `/undo <task_id>` — вернуть задачу в статус "к выполнению".
+- `/delete <task_id>` — удалить задачу.
 
----
+## Скрипты проекта
 
-## 11) Как запускать long polling на VM (без webhook)
+- `npm run dev` — dev-режим Next.js.
+- `npm run build` — production-сборка.
+- `npm run start` — запуск production-сборки.
+- `npm run lint` — ESLint.
+- `npm run telegram:poll` — запуск Telegram long polling воркера.
+- `npm run prisma:generate` — генерация Prisma Client.
+- `npm run prisma:migrate` — применение миграций (deploy).
+- `npm run prisma:dev` — создание/применение миграций в dev.
 
-Ниже пример для Ubuntu VM.
+## API обзор
 
-### 11.1 Установка базовых пакетов
+Основные маршруты (внутренний API приложения):
 
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose-plugin git
-sudo systemctl enable docker
-sudo systemctl start docker
-```
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `POST /api/voice/process`
+- `POST /api/tasks/voice/complete`
+- `POST /api/tasks/voice/uncomplete`
+- `POST /api/tasks/voice/delete`
+- `GET /api/telegram/status`
+- `POST /api/telegram/generate-link-code`
+- `POST /api/telegram/webhook` (для webhook-режима)
+- `POST /api/locale`
 
-### 11.2 Клонирование проекта и запуск
+## Проверка качества
 
-```bash
-git clone <URL_РЕПОЗИТОРИЯ> ai-voice-task-tracker
-cd ai-voice-task-tracker
-cp .env.example .env
-nano .env
-docker compose up -d --build
-```
-
-### 11.3 Важно: отключить webhook, если раньше включали
-
-Если бот раньше работал через webhook, удалите его:
-
-```bash
-curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/deleteWebhook" \
-  -H "Content-Type: application/json" \
-  -d "{\"drop_pending_updates\":false}"
-```
-
-Проверка:
-
-```bash
-curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
-```
-
-В ответе `url` должен быть пустой (`""`).
-
-### 11.4 Проверка poller на VM
+Перед коммитом рекомендуется запускать:
 
 ```bash
-docker compose logs -f telegram-poller
+npm run lint
+npx tsc --noEmit
+npm run build
 ```
 
-Ожидайте сообщение:
-- `Starting Telegram long polling worker...`
+## Структура проекта
 
----
-
-## 12) Как проверить dashboard и funnel analytics
-
-Откройте:
-
-[http://localhost:3000/dashboard](http://localhost:3000/dashboard)
-
-Проверьте карточки:
-- `Total Tasks`
-- `Total Voice Inputs`
-- `Transcription Success Rate`
-- `Task Conversion Rate`
-
-И блоки:
-- `Tasks by Category`
-- `Funnel Analytics`
-- `Recent Tasks`
-
-SQL-проверка событий:
-
-```bash
-docker compose exec db psql -U postgres -d ai_voice_task_tracker -c "select \"eventName\", count(*) from analytics_events group by \"eventName\" order by count(*) desc;"
+```text
+.
+├─ prisma/
+├─ public/
+├─ scripts/
+│  └─ telegram-polling.mjs
+├─ src/
+│  ├─ app/
+│  │  ├─ api/
+│  │  ├─ app/
+│  │  ├─ dashboard/
+│  │  ├─ login/
+│  │  ├─ register/
+│  │  └─ settings/
+│  └─ lib/
+├─ docker-compose.yml
+├─ Dockerfile
+└─ .env.example
 ```
 
-Ожидаемые события:
-- `register_success`
-- `login_success`
-- `voice_uploaded`
-- `transcription_succeeded`
-- `task_created_from_voice`
-- `telegram_link_code_generated`
-- `telegram_linked`
+## Лицензия
 
----
-
-## Полезные команды
-
-Перезапуск всех сервисов:
-
-```bash
-docker compose restart
-```
-
-Перезапуск только poller:
-
-```bash
-docker compose restart telegram-poller
-```
-
-Остановка:
-
-```bash
-docker compose down
-```
-
-Полный сброс БД:
-
-```bash
-docker compose down -v
-```
-
----
-
-## Важные файлы
-
-- `docker-compose.yml`
-- `.env.example`
-- `scripts/telegram-polling.mjs`
-- `src/app/api/telegram/webhook/route.ts` (опционально, если захотите webhook-режим)
-- `src/lib/telegram-update-handler.ts`
-- `prisma/schema.prisma`
-- `prisma/migrations/20260428120000_init/migration.sql`
-
----
-
-## Официальные ссылки
-
-- Mistral Console: [https://console.mistral.ai/](https://console.mistral.ai/)
-- Telegram Bot API: [https://core.telegram.org/bots/api](https://core.telegram.org/bots/api)
+Лицензия не указана. При необходимости добавьте файл `LICENSE`.
